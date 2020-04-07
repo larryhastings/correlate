@@ -31,7 +31,7 @@ two messy but strongly-related datasets.
 
 How it works: you submit your two datasets to
 **correlate**, showing it each value and the "keys" that map to that value.
-You then shen set it to work.  It thinks for a while, then produces its best
+You then set it to work.  It thinks for a while, then produces its best
 guess as to how to match the two sets.  And its best guess is... hey, that's
 pretty good!
 
@@ -40,7 +40,17 @@ its matches.  If there's a key present in both datasets, but it only maps
 to one value in each dataset, odds are good that those two values
 are an excellent match.
 
-### Quick Start For The Impatient
+That's the basics, but **correlate** supports some advanced features:
+
+* A key mapping can optionally specify a *weight*.
+
+* You can map a key *multiple times.*
+
+* The order of values can inform the matches.  This is called *ranking.*
+
+* **correlate** supports *fuzzy keys,* keys that can partially match each other.
+
+### Quick Start
 
 This code:
 
@@ -198,7 +208,7 @@ significant.
 * A key can map to a value multiple times.  Each mapping can have its own weight.
 
 * If both datasets are ordered, this ordering can optionally influence the match scores.
-**correlate** calls this *ranking.*
+**correlate** calls this *ranking.*  Ranking is an attribute of values, not keys.
 
 * Keys can be "fuzzy", meaning two keys can be a partial match rather than a binary yes/no.
 Fuzzy keys in **correlate** must inherit from a custom abstract base class called
