@@ -46,9 +46,9 @@ That's the basics, but **correlate** supports some advanced features:
 
 * You can map a key *multiple times.*
 
-* The order of values can inform the matches.  This is called *ranking.*
+* Keys can be *fuzzy keys,* keys that may only partially match each other.
 
-* **correlate** supports *fuzzy keys,* keys that can partially match each other.
+* The order of values can inform the matches.  This is called *ranking.*
 
 ### Quick Start
 
