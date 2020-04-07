@@ -44,7 +44,7 @@ are an excellent match.
 
 This code:
 
-import correlate
+    import correlate
 
     c = correlate.Correlator()
     a, b = c.datasets
