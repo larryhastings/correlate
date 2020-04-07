@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+#
+# infer_mv
+# Copyright 2019-2020 by Larry Hastings
+#
+# A sample script demonstrating one possible use for "correlate".
+# See usage for more information.
+#
+# Part of the "correlate" package:
+# http://github.com/larryhastings/correlate
+
+import correlate
+import os.path
+import shlex
+import sys
+
+def usage():
+    print("Usage:")
+    print("   ", os.path.basename(sys.argv[0]), "<source_dir>", "<file>", "[<file2> ...]")
+    print()
+    print("Produces a shell script on stdout that, if executed,")
+    print("renames <file> based on correlating to filenames in <source_dir>.")
+    print("(Why a shell script?  So you can edit the results before you commit.)")
+    print()
+    print("Supports recursively renaming directory trees.")
+    print("Preserves extension from each file.")
+    sys.exit(0)
+
+try:
+    source_dir = sys.argv[1]
+    files = sys.argv[2:]
+    assert len(files)
+except AssertionError:
+    usage()
+except IndexError:
+    usage()
+
+
+c = correlate.Correlator()
+
+def filenames_to_keys(filenames, dataset):
+    for filename in filenames:
+        if os.path.isdir(filename):
+            for dirpath, dirnames, filenames in os.walk(filename):
+                if dirpath.startswith(("./", ".\\")):
+                    dirpath = dirpath[2:]
+                dirnames.sort()
+                filenames.sort()
+                filenames_to_keys((os.path.join(dirpath, filename) for filename in filenames), dataset)
+            continue
+
+        basename = filename.rpartition(".")[0]
+        basename = basename.replace("/", " ")
+        basename = basename.replace("\\", " ") # hello, windows users!
+        keys = correlate.str_to_keys(basename)
+        dataset.set_keys(keys, filename)
+
+# old names
+filenames_to_keys(files, c.dataset_a)
+
+# new names
+old_dir = os.getcwd()
+os.chdir(source_dir)
+filenames_to_keys((".",), c.dataset_b)
+os.chdir(old_dir)
+
+result = c.correlate()
+
+old_dirs_to_rmdir = set()
+new_dirs_created = set()
+
+correct_names = []
+renames = []
+
+for match in result.matches:
+    src = match.value_a
+    dst = match.value_b
+
+    # this lets you, for example, use a directory of MP3s to rename a directory of FLACs
+    basename, _ = os.path.splitext(dst)
+    _, ext = os.path.splitext(src)
+    dst = basename + ext
+
+    if src == dst:
+        correct_names.append(dst)
+        continue
+    renames.append((src, dst))
+
+
+
+print(f"# {len(result.matches)} matches")
+print(f"# {len(result.unmatched_a)} unmatched source filenames")
+print(f"# {len(result.unmatched_b)} unmatched files we can't rename")
+print(f"# {len(correct_names)} files that already have the correct name")
+print()
+
+if not renames:
+    print("# nothing to do!")
+
+for src, dst in renames:
+    old_dir = os.path.dirname(src)
+    old_dirs_to_rmdir.add(old_dir)
+
+    new_dir = os.path.dirname(dst)
+    if new_dir not in new_dirs_created:
+        new_dirs_created.add(new_dir)
+        print("mkdir", shlex.quote(new_dir))
+
+    print(f"# score {match.score}")
+    print("mv", shlex.quote(src), shlex.quote(dst))
+
+old_dirs_to_rmdir -= new_dirs_created
+for old_dir in sorted(old_dirs_to_rmdir):
+    print("rmdir", shlex.quote(old_dir))
+
+for file in result.unmatched_b:
+    print("# unmatched:", shlex.quote(file))
