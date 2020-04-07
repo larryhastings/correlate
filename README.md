@@ -40,6 +40,39 @@ its matches.  If there's a key present in both datasets, but it only maps
 to one value in each dataset, odds are good that those two values
 are an excellent match.
 
+### Quick Start For The Impatient
+
+This code:
+
+import correlate
+
+    c = correlate.Correlator()
+    a, b = c.datasets
+
+    a.set("this", "greg")
+    a.set("is", "greg")
+    a.set("Greg", "greg", weight=5)
+    a.set_keys("Carol over here".split(), "carol")
+    a.set_keys("My name is Tony".split(), "tony")
+    a.set_keys("Hi I'm Steve".split(), "steve", weight=2)
+
+    b.set_keys("gosh my name is Greg".split(), "Greg")
+    b.set_keys("Carol is my name".split() , "Carol")
+    b.set_keys("Pretty sure I'm still Tony".split(), "Tony")
+    b.set_keys("I'm Steve".split(), "Steve")
+
+    result = c.correlate()
+    for result in result.matches:
+        print(f"{result.score:1.3f} {result.value_a} -> {result.value_b}")
+
+produces this output:
+
+    5.750 greg -> Greg
+    3.800 steve -> Steve
+    1.286 carol -> Carol
+    1.222 tony -> Tony
+
+
 ### A Real-Life Example
 
 There's a podcast I like.  I download it as MP3 files

@@ -53,7 +53,6 @@ def smoke_test(verbose):
     a.set("meredith", "meredith", weight=3)
     a.set("meredith", "meredith", weight=5)
 
-    b = c.dataset_b
     b.set_keys("this this this Greg Greg".split(), "greg")
     b.set_keys("hey we found Carol this is a good idea I repeat this is Carol".split() , "carol")
     b.set_keys("Tony over here".split(), "tony")

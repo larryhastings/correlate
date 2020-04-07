@@ -11,6 +11,11 @@
 # Part of the "correlate" package:
 # http://github.com/larryhastings/correlate
 
+"""
+Correlates two sets of data by matching unique or fuzzy
+keys from both datasets, with tunable heuristics.
+"""
+
 # TODO:
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
@@ -45,353 +50,6 @@
 #         and simplify my code.  if you think key_reuse_penalty_factor is useful,
 #         please contact me and tell me why!
 
-# DONE
-#   * fix:
-#       If you call match_boiler with reuse_a == reuse_b == True,
-#       filter must be None.  (It would be easy to support
-#       filter != None here--I didn't bother, because I don't need it.)
-#
-#   * write sample utility: rename files in one directory tree based on another
-#   * quality-of-life for debugging:
-#         store all passes for a match together, then dump them together
-#   * match_boiler
-#       * cache generated results in process hopper
-#       * add independent test for score boiler
-#       * explicitly manage state in score boiler?
-#           * rather than nonlocal x 4, have a context object, filter can dup it
-#   * add documentation for the match boiler
-#   * match_boiler
-#       * callback
-#           * callback cannot signal "exit now"
-#           * callback(item) returns new hopper entries
-#   * another wrinkle in fuzzy key scoring!
-#        * the setup:
-#            * dataset_a: fuzzy keys fka1 fka2
-#            * dataset_b: fuzzy keys fkbH (high scoring) and fkbL (low scoring)
-#            * fka1->fkbH == fka2->fkbH
-#            * fka1->fkbL <  fka2->fkbL
-#        * the problem: how do we ensure that correlate picks fka2->fkbL?
-#          it can only do that if it previously picked fka1->fkbH.  but
-#          it doesn't look forward!
-#        * answer: when there are multiple fuzzy key matches with the same top
-#          score, wherever we are in looping over fuzzy_matches, and more than
-#          one of those include the same key, you must try all possible combinations.
-#          think of it as little alternate timelines: you need to try each choice
-#          and keep the one with the highest *final* score.
-#            * in this example, you must try *both* fka1->fkbH *and* fka2->fkbH.
-#            * all possible systems of matches that have keys in common must be tried.
-#              if you had:
-#                * A1->B1
-#                * A2->B1
-#                * A1->B2
-#                * A2->B3
-#                * A3->B4
-#              you must try each of the first four combinations.  the last one, A3->B4,
-#              has no keys in common with any of the other attempts.  so we'll get to
-#              keep that one regardless.
-#                * in fact, it'll be cheaper if you commit A3->B4 first, before doing
-#                  the alternate timelines check.  so: sort by "len(key matches group)"
-#                  and consume smaller numbers first.
-#                * you CAN have to do this multiple times!  in this example, we could
-#                  then have fka3 and fka4 and fkbH2 and fkbL2, etc etc etc.
-#            * note that this does not extend past the current loop over fuzzy_matches!
-#              you *don't* need to change the hopper to accommodate this, that part *doesn't*
-#              change.  you only have to compute it using the current list of fuzzy_matches.
-#              (it's because round N is a strict subset of round N-1, and for the
-#              purposes of this stage of scoring you ignore the weights.)
-#        * when writing the test, run it twice: once forwards, and once where
-#          you add everything in reverse order.  hopefully one of those will result
-#          in triggering the problem!
-#   * clean up tests
-#       * rename ytjd test?
-#       * move smoke & regression tests from __init__ to tests
-#       * change all tests so they self-validate instead of printing whatever
-#           * but they should support -v to be verbose
-#       * fix all ytjd tests so they work!
-#   * docs
-#       * require that fuzzy matching is symmetric: a.compare(b) must always equal b.compare(a)
-#       * explain each parameter to correlate
-#       * explain the algorithm / math in tiresome, exhausting detail
-#       * example of "using correlate", e.g. run, then examine the low score
-#         matches, and probably use minimum_score to cut off the bad one_minus_ranking_factor
-#       * add sardonic quotes to docs
-#           * if it's hard to explain, it might be a bad idea
-#           * "After dissolving the brick in a gallon of water, do not place the liquid in a jug away in the cupboard for twenty days, because then it would turn into wine." --instructions on the Vino Sano Grape Brick, a product during America's Prohibition on alcohol
-#       * describe how scoring algorithm works
-#           * the mathematical balance of dividing the key's score on an individual match by the cumulative (unweighted) score for that key
-#   * reimplement validate, you dummy
-#   * experiment with interning all keys
-#       we could provide an option to do it for you
-#   * remove randomness
-#       * iterating over fuzzy keys is currently possibly random
-#   * why did the builtin fuzzy match torture test score change with this update?
-#     who is right, the new code or the old?
-#   * hit ratio bonus
-#       * needs to understand fuzzy matches, like, at all
-#       * make sure it understands rounds properly too, see above
-#
-#   * change approach to data structures
-#       * the default data structures should be designed primarly
-#         for fast modification, and secondarily for compactness
-#       * then at the start of correlate() we create the temporary
-#         data structures whose purpose is speed
-#       * so e.g. store exact keys as [index][key][round#] = weight
-#         (and just call sort on [index][key] when adding a new weight)
-#   * conceptually: key K mapped in round 0 is a different key from K mapped in round 1
-#       * self._key_to_index[key][round] = {index1, index2, ...}
-#                                ^^^^^^^ this is new!
-#           * you already know how many rounds this key goes
-#           * you will never add more than one new round each time you add to this
-#       * store key scores as a tuple:
-#           * key_scores_a[k] = (round0, round1, round2)
-#           * all keys, fuzzy and not!
-#           * key_scores_a[k] is k's score in matching in dataset_b
-#       * this fundamentally affects scoring
-#           * fuzzy keys don't understand this at ALL right now
-#       * this affects score_ratio_bonus
-#       * explain in rounds docs
-#   * fix debug printing: print fuzzy keys as rounds, ala exact keys
-#   * fix fuzzy key testing so it doesn't need to duplicate keys_a & keys_b
-#     if there's only one round
-#   * when dumping the keys & values at the top of correlate,
-#     present it in the post-digested form with rounds,
-#     with exact and fuzzy keys presented seperately
-#       * present keys in sorted order?  sort by type, if same type sort by value
-#   * should score_ratio_bonus computed with fuzzy keys use the cumulative score rather than the count?
-#   * ytjd
-#       * print out the elapsed time!
-#       * the test harness should know what the correct matches are,
-#         and should try all four configurations
-#         and check that it gets correct results each time.
-#       * and then it should drive all of them, and only produce output when the test fails.
-#   * MAJOR RETHINK OF FUZZY KEYS
-#       * exact keys are computed as (weight_a * weight_b) / (uses_in_a * uses_in_b)
-#       * fuzzy keys are easily outweighing exact keys because they don't divide by (uses_in_a * uses_in_b)
-#       * so: when we pre-compute fuzzy key interactions, we should store the total weight they score
-#          * total weight being the sum of all scores they get against keys from the other dataset
-#          * the problem: if this fuzzy key only ever cumulatively scores 0.1 when comapred to all equivalent
-#            fuzzy keys in the other dataset, then it'd be (0.1 / 0.1) which == 1.0 and whoops now it's a big number!
-#          * I think it's compute (weight_a * weight_b) / (score_a * score_b)
-#          * what if score_a is a small number? now we're dividing by a small number.
-#              * it might be (weight_a * weight_b * fuzzy_score) * (fuzzy_score / score_a)
-#              * this way, we have the ratio of our weight          ^^^^^^^^^^^^^^^^^^^^^
-#                vs all weight, but we still factor in the fuzzy score
-#          * better thought:
-#              * it might be (weight_a * weight_b * fuzzy_score) / (positive_fuzzy_score_count_a * positive_fuzzy_score_count_b))
-#              * positive_fuzzy_score_count_a is the count of the number of times this key, when compared against a fuzzy
-#                key in b, resulted in a nonzero score (& symmetrically for _b)
-#              * if fuzzy score was always 1, then this works out the same way that exact keys are scored.
-#              * it's really this for *both* exact *and* fuzzy keys:
-#                   score * (weight_a / number_of_matches_of_this_key_in_b) * (weight_b / number_of_matches_of_this_key_in_a)
-#              * BUT IT HAS TO BE PER-ROUND
-#       * the final algorithm
-#          * it has to be weight / number_of_actual_hits_in_b
-#          * which means you don't know how many hits it has until you run the matches
-#          * but! once you calculate the hits, that means the score changes, and that might mean preferring a different match,
-#            which can change the hit count for *two* keys
-#              * e.g. when matching X x Y, for fuzzy type T, X has keys A and B, Y has key C.  A-C scores higher than B-C,
-#                but A has a lot of hits and so it has a big divisor, wheras B is rarely used, so actually B-C is better.
-#                but that changes the # of hits for both A and B in that same dataset
-#          * the algorithm:
-#              * hits_last_time[fuzzy_type][round][key] = #-of-matches that defaults to 1
-#              * recomputed_indices = math.inf
-#              * last_round_scores = None
-#              * the loop:
-#                    fuzzy_indices = all_indices.copy()
-#                    while keep_going:
-#                        create a new data structure hits_this_time[a|b][fuzzy_type][round][key] = #-of-matches that defaults to 0
-#                        create fuzzy_scores[index][index_b]
-#                        for index_a, index_b in fuzzy_indices
-#                            for fuzzy_type
-#                               for round in rounds (using leftovers etc)
-#                                   compute final_score = fuzzy_score * (weight_a / hits_last_time_b) * (weight_b / hits_last_time_a)
-#                                   store in local array of matches
-#                               sort matches
-#                               fuzzy_score = 0
-#                               for match in matches
-#                                   if score uses two keys that haven't been locally matched yet
-#                                       fuzzy_score += score
-#                                       increment hits_this_time for key in both a and b
-#                               fuzzy_scores[index_a][index_b] = fuzzy_score
-#                        changed[a|b] = set()
-#                        for dataset in a, b
-#                            for fuzzy_type
-#                                for round in rounds
-#                                    for key in hits_this_time
-#                                        if hits_this_time != hits_last_time
-#                                            changed[dataset].add(all indexes that use this key in this round)
-#                        if not (changed[a] or changed[b])
-#                            break
-#                        fuzzy_indices.clear()
-#                        for indices in all_indices
-#                            index_a, index_b = indices
-#                            if index_a in changed[a] or index_b in changed[b]:
-#                                fuzzy_indices.append(indices)
-#                        new_recomputed_indices = len(fuzzy_indices)
-#                        if new_recomputed_indices >= recomputed_indices:
-#                            # we're not making progress
-#                            break
-#                        continue
-#                    commit fuzzy scores
-#       * okay, so, *not* that.
-#           * the thing is: why should the weight of a key influence which score we use?
-#             we should pick fuzzy matches based on the *unweighted score*.  we should be
-#             picking the *best* matches, not the *most important* matches.
-#           * this makes things much more straightforward.  no looping necessary.
-#             we just iterate once, pick the highest (unweighted) matches, counting them
-#             as we go.  then we go back and divide by the number of times we matched
-#             on that key.
-#               * should we divide by "number of times we matched on that key" or by
-#                 "cumulative score from fuzzy matching on that key"?   definitely the
-#                 former.  if key A matches once with a score of 0.25, and key B matches
-#                 once with a score of 0.9, if we divide by the cumulative score then
-#                 those would both subtotal to 1.0, which is wrong.
-#
-#   * add debug print statements to show population phase
-#
-#   * optimizations
-#       * precount all exact keys (in cache_optimal_fuzzy)
-#       * fuzzy keys: instead of just adding every (a,b),
-#         pre-compute the fuzzy compare and only add if it's > 0
-#           * cache results [a][b] = score
-#       * reorganize exact keys so that index is first and then rounds?
-#           * that would speed up the exact inner loop, where we wouldn't
-#             have to test and early-exit when we run out of rounds
-#   * ytjd experiments
-#       * try real rankings with ytjd
-#       * date:
-#            0 days = 1.0
-#            1-4 days = 1 - (# of days / 10)
-#            5 - 8 days = 0.5
-#            9+ days = 0
-#
-#   * if a value never finds any matches, and fuzzy_match_types has values sent in,
-#     ignore fuzzy_match_types and match that value against any values it has fuzzy
-#     key types in common with
-#       * this is called "last chance"
-#       * what's a better name?  "last chance" or "second chance"?
-#         * probably "last chance".  first thought best thought!
-#       * be willing to do this multiple times
-#          * new values may appear in the last chance list
-#       * only allow a value to be last-chanced once
-#          * if a value shows up as last-chance a second time, ignore it
-#       * this should fix YTJD with the title "Red Rock" matching "Redrock"
-#         (it'll match the date, fuzzy string matching unnecessary)
-#       * should be turn-off-able with a boolean parameter
-#
-#   * change debug_print so it's almost free
-#       * write a preprocessor that adds / removes debug printfs
-#       * old lame idea: basically use f() like you wrote for blurb
-#         so strings don't evaluate their arguments
-#
-#   * verify that result.normalize() works, you dummy
-#   * reconsider parameter names
-#       * multipliers should use the suffix _factor
-#       * additions should use the suffix _bonus
-#   * return a CorrelateResult instead of an array
-#       * result.normalize()
-#   * make use of hashable values
-#     * store a _hash_values map, try that first when storing / looking up values
-#       * this is so much better than a linear search of values
-#   * ranking
-#     * add correlate option to explicitly use abs or rel ranking
-#     * play with Decimal with 30 digits, see if you need to
-#       compute score etc in a different order
-#       * make sure ranking math preserves accuracy
-#     * pass is as N, not as N/len(inputs)
-#         * biggest_n = max(biggest_n, n)
-#         * if there's < 2 values in a dataset, disable rank computation
-#     * compute the distance two ways: as a ratio over each dataset,
-#       and absolute.  this solves the "dataset_b is dataset_a but truncated"
-#       problem
-#         * and then what?  and then: when correlating, apply the two distances,
-#           and store the results in two separate lists.
-#           also track the cumulative score of each of those lists.
-#           (minimum_score should apply here before we add that score.)
-#           then use the list with the higher score.
-#     * multiply score by distance:
-#       distance_minimum = 0.4, then
-#           final_score = subtotal * (0.4 + ((1.0 - 0.4) * distance))
-#       distance is 1 if they're the same and 0 if they're at opposite ends
-#       default distance_minimum is 1.0, which disables it
-#         * you can't use both this one and the bonus weight one?
-#     * to get a clean 0.0 / 1.0, you need to divide by "len(x) - 1"
-#         * turn off ranking if there are fewer than 2 elements
-#     * what if dataset_a has rankings 0 to 100
-#       and dataset_b has rankings 34 to 48
-#         * you need to stop using len(dataset) and start just
-#           remembering the lowest and highest rankings you've seen
-#
-#   * add a pickleable, safe? cache object that remembers previous
-#     correlations
-#     * wouldn't examine value, just keys
-#     * keys would have to be exactly the same and in same order
-#
-#   * fuzzy matching
-#     * preprocess fuzzy keys, produce a leftovers-friendly representation of rounds
-#         * first round should be a pre-baked dict! second and additional rounds
-#           should be in leftovers format.
-#     * redo data structures so they lend themselves to the algorithm
-#        * run benchmarks first!  so you can see the improvement.
-#     * use high-level operations rather than iterating
-#        * if EVERY key in BOTH datasets isinstance(CorrelateFuzzyKey), then
-#        * CorrelateFuzzyKey is interface for making fuzzy query
-#        * use that to compute score directly
-#        * still use the rest of the mechanisms, e.g. distance and key coverage bonus weights
-#     * sort fuzzy keys by type, only compare type against the same type
-#        * if the user wants to compare disparate things, it's up to them,
-#          they can just use one class and idk use has-a or something
-#     * allow the user to disable the use of fuzzy keys to inform which
-#       values to try matching
-#        * have a parameter like "fuzzy_match_suggestions=True"
-#        * legal values: True, False, and iterable-of-subclasses-of-FuzzyKey
-#        * True=all fuzzy match types
-#            * just "search" the list of all fuzzy types
-#        * False=no fuzzy match types
-#            * just "search" an empty set
-#        * iterable=just those types
-#   * fuzzy keys need to be consumed by matches,
-#     like indexes are in the final step where we iterate over
-#     the matches in sorted order
-#        * store (score, fuzzy_key_a, fuzzy_key_b) in an array
-#        * when all fuzzy tests have been performed
-#           * sort the array
-#           * iterate from highest to lowest
-#           * if neither key has been used yet, mark both keys as used
-#             and apply the score
-#        * but now we have the problem that a key can go unused in a round!
-#          so it should get reused in the next round.  but that key might
-#          also be mapped in that round!  this resulted in all the complicated
-#          logic around leftovers_a and leftovers_b.  but it works.  whew!
-
-#
-#   * add a "bonus" for percentage coverage of keys
-#     * right now if you had "Star Wars" and "Star Wars: The Empire Strikes Back"
-#       in dataset A and "Star Wars" in dataset B (all keys split and lowered),
-#       both titles have an exactly equal score mapping from A to B.  Fix this.
-#     * idea: bonus score, which is
-#            ((2 * default_weight
-#              * (number of keys in A that have a match in B)
-#              * (number of keys in B that have a match in A)
-#              ) / (
-#              (number of keys in A)
-#              * (number of keys in B)
-#            ))
-#   * intelligently handle a key appearing multiple times for a single value?
-#     * internally store in "rounds"
-#       * each dataset stores a series of rounds, which are key->value maps
-#       * round N represents a particular key that has been mapped to a particular
-#         value N times, e.g. if "The" -> o1 three times, there will be at least
-#         three "rounds" in the dataset, and each one will map "The" -> o1
-#       * thus, if key->value in round N, then key->value in every round N-[1..(N-1)]
-#       * sort by weight to lowest round, such that if key->value=weightX in round N,
-#         key->value<=weightX in round N+(1..)
-
-"""
-Correlates two sets of data by matching unique or fuzzy
-keys from both datasets, with tunable heuristics.
-"""
-
 import builtins
 from collections import defaultdict
 import copy
@@ -402,7 +60,7 @@ import math
 import pprint
 import string
 
-__version__ = "0.5"
+__version__ = "0.5.1"
 
 
 punctuation = "?!@#$%^&*:,<>{}[]\\|_-"
@@ -1411,9 +1069,9 @@ class Correlator:
         for indexes in all_indexes:
             index_a, index_b = indexes
 
-            # cumulative_exact_score is the total score of actual matched keys for these indexes
+            # cumulative_possible_exact_score is the total score of actual matched keys for these indexes
             # this is used in the computation of score_ratio_bonus.
-            cumulative_exact_score = 0
+            cumulative_possible_exact_score = 0
 
             # match_print(indexes, f"first pass {index_a} x {index_b} :") #debug
             # match_print(indexes, f"    value a: index {index_a:>{index_padding_length}} {self.dataset_a.values[index_a]}") #debug
@@ -1442,7 +1100,7 @@ class Correlator:
                     pass
 
                 round_factor = key_reuse_penalty_factor ** (i*2)
-                cumulative_exact_score += len(keys_intersection) * 2
+                cumulative_possible_exact_score += len(keys_intersection) * 2
 
                 # sorted_a = "{" + ", ".join(list(sorted(keys_a))) + "}" #debug
                 # sorted_b = "{" + ", ".join(list(sorted(keys_b))) + "}" #debug
@@ -1470,8 +1128,9 @@ class Correlator:
                 i += 1
 
 
+            exact_score = sum(sorted(exact_scores))
             # match_print(indexes) #debug
-            # match_print(indexes, f"    {exact_scores=}, total = {sum(sorted(exact_scores))}") #debug
+            # match_print(indexes, f"    {exact_scores=}, {exact_score=}") #debug
 
             # we're only interested in types that are in both a and b
             # therefore we can iterate over a and check for it in b
@@ -1504,17 +1163,17 @@ class Correlator:
                     fuzzy_semifinal_matches.append( (fuzzy_score, semi_final_score, tuple_a, tuple_b) )
 
             if not fuzzy_semifinal_matches:
-                # match_print(indexes, f"        no fuzzy scores.  add to third pass.") #debug
+                # match_print(indexes, f"    no fuzzy scores.  add to third pass.") #debug
                 # match_print(indexes, "") #debug
-                third_pass.append( (indexes, score, cumulative_exact_score) )
+                third_pass.append( (indexes, exact_score, cumulative_possible_exact_score) )
                 continue
 
             # goes into second_pass to await final computation
             plural = "" if len(fuzzy_semifinal_matches) == 1 else "s"
             # match_print(indexes) #debug
-            # match_print(indexes, f"        {len(fuzzy_semifinal_matches)} fuzzy score{plural} added to second pass.") #debug
+            # match_print(indexes, f"    {len(fuzzy_semifinal_matches)} fuzzy score{plural} added to second pass.") #debug
             # match_print(indexes) #debug
-            second_pass.append( ( indexes, exact_scores, cumulative_exact_score, fuzzy_semifinal_matches ) )
+            second_pass.append( ( indexes, exact_scores, cumulative_possible_exact_score, fuzzy_semifinal_matches ) )
 
         # if not second_pass: #debug
             # self.print("[skipping second pass (no fuzzy keys!)]") #debug
