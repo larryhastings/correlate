@@ -1328,3 +1328,77 @@ The final trick really was realizing what `score_ratio_a` represents.
 Really, it represents the ratio of how much *this* fuzzy match for `key_a`
 contributed to the sum of *all* fuzzy matches for `key_a`
 across all successful matches in `dataset_a`.
+
+### Why I'm Not Using The Gail-Shipley Algorithm
+
+A friend asked me if this was homomorphic to the Stable Matching Problem:
+
+https://en.wikipedia.org/wiki/Stable_matching_problem
+
+Because, if it was, I might be able to use the Gail-Shipley algorithm:
+
+https://en.wikipedia.org/wiki/Gale%E2%80%93Shapley_algorithm
+
+I thought about this for quite a while, and I don't think **correlate** maps perfectly onto the stable matching problem.  **correlate**solves a problem that is:
+
+a) simpler, and
+b) different.
+
+I think it *could* use Gail-Shipley, but that wouldn't be guaranteed to produce optimal results... and it's more expensive than my "greedy" algorithm.
+
+In all the following examples, `A`, `B`, and `C` are values in `dataset_a` (aka "men") and X, Y, and Z are values in `dataset_b` (aka "women").
+The expression `A: XY` means "`A` prefers `X` to `Y`". The expression `A:X=1.5` means "when matching `A` and `X`, their score is `1.5`".
+
+*How is it simpler?*
+
+The stable matching problem only requires a local ordering, where the preferences of any value in either dataset are disjoint
+from the orderings of any other value.  But **correlate** uses a "score"--a number--to compute these preferences, and this
+score is symmetric; if `A:X=1.5`, then `X:A=1.5` too.
+
+On this related Wikipedia page:
+
+https://en.wikipedia.org/wiki/Lattice_of_stable_matchings
+
+we find a classic example of a tricky stable matching problem:
+
+    A: YXZ
+    B: ZYX
+    C: XZY
+
+    X: BAC
+    Y: CBA
+    Z: ACB
+
+Gail-Shipley handles this situation with aplomb.  Does **correlate**?  The answer is... this arrangement of constraints
+just can't *happen* with **correlate**, because it uses scores to establish its preferences, and the scores are symmetric.
+There are nine possible pairings with those six values. It's impossible to assign a unique score to each of those nine
+pairings such that the preferences of each value match those constraints.
+
+(I know--I tried. I wrote a brute-force program that tried every combination. 362,880 attempts later, I declared failure.)
+
+*How is it different?*
+
+Gail-Shipley requires that every value in each dataset expresses a strictly ordered preference for every value in the
+other dataset. But in **correlate**, two matches can have the same score.
+
+Consider this expression of a **correlate** problem:
+
+    A:X=100
+    A:Y=1
+
+    B:X=100
+    B:Y=2
+
+Gail-Shipley can't solve that problem, because X doesn't prefer A or B--it likes them both equally.
+If we weaken Gail-Shipley to permit lack-of-preference, my hunch is you could contrive inputs where
+it would never complete.
+
+In addition, **correlate** uses a numerical score to weigh the merits of each match, and seeks to
+maximize the cumulative score across all matches. Gail-Shipley's goals are comparatively modest--any
+match that's stable is fine. There may be many stable matchings; Gail-Shipley considers them all
+equally good.  There's no guarantee that, if fed digestible **correlate** datasets, Gail-Shipley
+would produce the stable match with the highest score.
+
+(I admit, I wasn't able to come up with an example where Gail-Shipley would view two solutions as
+equally desirable, but **correlate** would definitely prefer one over the other. Maybe this last
+thing isn't an actual problem.)
