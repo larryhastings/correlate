@@ -1331,7 +1331,7 @@ across all successful matches in `dataset_a`.
 
 ### Why I'm Not Using The Gail-Shipley Algorithm
 
-A friend asked me if this was homomorphic to the Stable Matching Problem:
+A friend asked me if this was isomorphic to the Stable Matching Problem:
 
 https://en.wikipedia.org/wiki/Stable_matching_problem
 
