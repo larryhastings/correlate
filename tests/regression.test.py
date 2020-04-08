@@ -11,6 +11,7 @@
 import itertools
 import os.path
 import sys
+import traceback
 
 from correlate import *
 
@@ -40,40 +41,41 @@ def smoke_test(verbose):
     comes out.
     """
 
-    c = Correlator()
-    a, b = c.datasets
+    for weight_power in (0, 1):
+        c = Correlator()
+        a, b = c.datasets
 
-    a.set_keys("this this this Greg Greg".split(), "greg")
-    a.set_keys("This is Carol I repeat this is Carol".split(), "carol")
-    a.set_keys("This is Tony".split(), "tony")
-    a.set_keys("This is Steve".split(), "steve")
-    a.set_keys("blasdlkj alskdjwekj lkjaslkj".split(), "unmatched 1")
-    a.set_keys("paosdpas oasidfjoas paosfdpsaod".split(), "unmatched 2")
-    a.set("meredith", "meredith", weight=1)
-    a.set("meredith", "meredith", weight=3)
-    a.set("meredith", "meredith", weight=5)
+        a.set_keys("this this this Greg Greg".split(), "greg", weight=5 ** weight_power)
+        a.set_keys("This is Carol I repeat this is Carol".split(), "carol")
+        a.set_keys("Tony".split(), "tony", weight=5 ** weight_power)
+        a.set_keys("This is Steve".split(), "steve")
+        a.set_keys("blasdlkj alskdjwekj lkjaslkj".split(), "unmatched 1")
+        a.set_keys("paosdpas oasidfjoas paosfdpsaod".split(), "unmatched 2")
+        a.set("meredith", "meredith", weight=1 ** weight_power)
+        a.set("meredith", "meredith", weight=3 ** weight_power)
+        a.set("meredith", "meredith", weight=5 ** weight_power)
 
-    b.set_keys("this this this Greg Greg".split(), "greg")
-    b.set_keys("hey we found Carol this is a good idea I repeat this is Carol".split() , "carol")
-    b.set_keys("Tony over here".split(), "tony")
-    b.set_keys("This is Steve".split(), "steve")
-    b.set_keys("no correlations found".split(), "unmatched 3")
-    b.set("meredith", "meredith", weight=3)
-    b.set("meredith", "meredith", weight=1)
-    b.set("meredith", "meredith", weight=5)
+        b.set_keys("this this this Greg Greg".split(), "greg", weight=5 ** weight_power)
+        b.set_keys("hey we found Carol this is a good idea I repeat this is Carol".split() , "carol")
+        b.set_keys("Tony over here".split(), "tony")
+        b.set_keys("This is Steve".split(), "steve", weight=5 ** weight_power)
+        b.set_keys("no correlations found".split(), "unmatched 3")
+        b.set("meredith", "meredith", weight=3 ** weight_power)
+        b.set("meredith", "meredith", weight=1 ** weight_power)
+        b.set("meredith", "meredith", weight=5 ** weight_power)
 
-    result = c.correlate()
-    if verbose:
-        pprint("matches", result.matches)
-        pprint("unmatched a", result.unmatched_a)
-        pprint("unmatched b", result.unmatched_b)
-    assert len(result.matches) == 5
-    for match in result.matches:
-        assert match.value_a == match.value_b
-    assert len(result.unmatched_a) == 2
-    assert len(result.unmatched_b) == 1
-    for value in itertools.chain(result.unmatched_a, result.unmatched_b):
-        assert "unmatched" in value
+        result = c.correlate()
+        if verbose:
+            pprint("matches", result.matches)
+            pprint("unmatched a", result.unmatched_a)
+            pprint("unmatched b", result.unmatched_b)
+        assert len(result.matches) == 5, f"{result.matches=} should be length 5, but it's length {len(result.matches)}!"
+        for match in result.matches:
+            assert match.value_a == match.value_b
+        assert len(result.unmatched_a) == 2
+        assert len(result.unmatched_b) == 1
+        for value in itertools.chain(result.unmatched_a, result.unmatched_b):
+            assert "unmatched" in value
 
 
 def fuzzy_rounds_stress_test(verbose):
@@ -334,7 +336,10 @@ def main(argv):
             fn(verbose)
             successes += 1
         except AssertionError as e:
-            print(repr(e))
+            exc_info = sys.exc_info()
+            tb = exc_info[2]
+            traceback.print_tb(tb)
+            original_print(repr(e))
     if successes == tests_run:
         original_print("All tests passed.")
     else:

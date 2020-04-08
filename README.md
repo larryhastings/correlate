@@ -72,8 +72,8 @@ This code:
     b.set_keys("I'm Steve".split(), "Steve")
 
     result = c.correlate()
-    for result in result.matches:
-        print(f"{result.score:1.3f} {result.value_a} -> {result.value_b}")
+    for match in result.matches:
+        print(f"{match.score:1.3f} {match.value_a} -> {match.value_b}")
 
 produces this output:
 
@@ -650,25 +650,26 @@ Mathematically:
 > If the implementation is hard to explain, it's a bad idea.
 > --*The Zen Of Python* by Tim Peters
 
-At the heart of **correlate** is a brute-force algorithm.
+At the heart of **correlate** is a brute-force algorithm.  It's what
+computer scientists would call an **O**(n²) algorithm.
 
 **correlate** computes every possible "match"--every mapping of a value in
 `dataset_a` to a value in `dataset_b` where the two values have keys in common.
-(That's why it takes so long to compute--it's what computer scientists would
-call an `O(n**2)` algorithm.)
 For exact keys, it uses set intersections to ignore pairs of values that have
 nothing in common, discarding early matches it knows will have a score of 0.
-Sadly, it can't do that for fuzzy keys, which is why
-fuzzy keys tend to slow **correlate** down even more.
+Sadly, it can't do that for fuzzy keys, which is why fuzzy keys tend to
+slow down  **correlate** even more.
 
-For each key that matches between the two values, it computes a score.  It
-then adds all those scores together, computing the final cumulative
-score for the "match", which it may modifiy based on the various bonuses
-and factors.
+For each key that matches between the two values, **correlate**
+computes a score.  It then adds all those scores together,
+computing the final cumulative score for the "match",
+which it may modifiy based on the various bonuses and factors.
 It then iterates over these scores in sorted order, highest score first.
 For every match where neither of the two values have been used
 in a match yet, it counts that as a "match" and adds it to the output.
-(Assuming `reuse_a` and `reuse_b` are both `False`.)
+(This assumes `reuse_a` and `reuse_b` are both `False`.  Also, this
+is a little bit of an oversimplification; see the section about the
+*Match Boiler* below.)
 
 One important detail: **correlate** is 100%
 deterministic.  Randomness can creep in around the edges in Python
@@ -691,7 +692,7 @@ If you call **correlate** as follows:
     c.dataset_a.set('a', o)
     c.dataset_a.set('a', o)
 
-then the key `'a'` really *is* mapped to value `o` twice,
+then key `'a'` really *is* mapped to value `o` twice,
 and those two mappings can have different weights.
 It's best to think of repeated keys like this as actually
 being two different keys--identical, but distinct.
@@ -701,9 +702,10 @@ they're not the same *file.*
 
 **correlate** calls groups of these multiple mappings *"rounds"*.
 A "round" contains all the keys from the Nth time they were
-repeated; round 0 contains every key, round 1 contains all the
-keys that were repeated twice, round 2 contains all the keys
-that were repeated three times, etc.
+repeated; round 0 contains every key, round 1 contains the second
+instances of all the keys that were repeated twice, round 2 contains
+all the third instances of all the keys that were repeated three times,
+etc.
 Rounds are per-value, and there are as
 many rounds as the maximum number of redundant mappings of
 any single key to any particular value in a dataset.
@@ -1212,14 +1214,14 @@ performance penalty--even when you had logging turned off!  It was mostly
 in computing the "f-strings" for the log, but also simply the calls to
 the logging functions added overhead too.
 
-The solution I settled on is: by default, each of the debug print statements
+My solution: by default, each of the debug print statements
 is commented out.
 **correlate** ships with a custom script preprocessor called
 `debug.py` that can toggle debugging on and off, by uncommenting and
 re-commenting the debug code.
 
 How does it know which lines to uncomment?  Each line of the logging-only
-code ends with a special string: "`#debug`".
+code ends with the special marker "`#debug`".
 
 To turn on this logging, run the `debug.py` script in the same directory
 as **correlate's** `__init__.py` script.  Each time you run it, it'll
@@ -1293,7 +1295,7 @@ fuzzy key that maps to a single value,
 and `dataset_a` only had one fuzzy key that also only maps to a single value.
 And let's say the fuzzy score you get from matching those two keys
 is `0.000001`--a really terrible match.
-Let's plug those numbers into our formula.  We get `0.000001 / (0.000001 * 0.000001)`
+Let's plug those numbers into our formula, shall we.  We get `0.000001 / (0.000001 * 0.000001)`
 which is `1000000.0`.  A million!  That's crazy!  We've taken an absolutely
 terrible fuzzy match and inflated its score to be nonsensically high.
 Clearly that's not right.
@@ -1302,7 +1304,7 @@ This leads us to the formula that actually works.  The insight here
 is that the same formula needs to work identically for exact keys.
 If you take this formula and compute it where every `fuzzy_score`
 is 1 (or 0), it produces the same result as the formula for exact keys.
-The final trick is that we can multiply by `fuzzy_score` wherever we need
+So the final trick is that we can multiply by `fuzzy_score` wherever we need
 to, because multiplying by 1 doesn't change anything.  That means
 the resulting formula will still be consistent with the exact keys
 scoring formula.  And what worked was the formula where we multiply by
