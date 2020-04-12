@@ -17,35 +17,16 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
-#   * remove callback from match boiler
-#       * storage format for fuzzy matches:
-#            round_a = round# for key a
-#            round_b = round# for key b
-#            lowest_round = min(round_a, round_b)
-#            highest_round = max(round_a, round_b)
-#            score=(fuzzy_score, -lowest_round, -highest_round)
+#   * retool streamlined data for new fuzzy match boiler
 #
-#   * match boiler is gale-shipley with operations reordered
+#   * doc: match boiler is gale-shipley with operations reordered/unrolled
 #
 #   * match_boiler:
 #       * when processing connected_items, pick apart into separate connected blobs where possible
-#           * if
-#
-#   * the gale-shipley boiler!
-#       * use gale-shipley, with these tweaks:
-#           * A, B, C are men, X, Y, Z are women
-#           * preference is established by score for values
-#           * preference is established by (fuzzy_score, round#) for fuzzy keys
-#           * if the score between A and X is 0, you always reject
-#           * if A is married to X and B asks X to trade up, and A:X and B:X
-#             have the same preference, you recurse! like the boiler!
-#           * don't enforce that everybody gets married
-#               * the larger set is always the "men"
-#               * if a man exhausts his list of preferences and remains single,
-#                 he's stuck being single
-#       * run in parallel with the match boiler
-#           * see who gets the higher cumulative score!
-#           * see who takes longer!
+#           * if there are 5 matches in a row with the same score, and there are
+#             two groups inside A-B-C and D-E connected within themselves,
+#             it's cheaper to just process D-E
+#               * you'll have to recurse on A-B-C too but you do that inside D-E
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
@@ -177,18 +158,6 @@ class MatchBoiler:
 
     If reuse_a is True, the values of value_a in the returned "results"
     are permitted to repeat.  Similarly for reuse_b and value_b.
-
-    If you need to do something fancy, you can subclass MatchBoiler.
-    There's even an overrideable callback hook provided for you:
-
-        def filter(item):
-            ...
-
-    filter(item) is called each time the boiler chooses an item from
-    "matches" to keep.  You're permitted to modify self.matches from
-    inside filter (in fact, that's the point).  However if you do you
-    need to ensure self.matches is in sorted order when you're done.
-    (The easy way to do that: call "sort_matches(self.matches)".)
     """
 
     def __init__(self, *, matches = None, reuse_a=False, reuse_b=False, indent=""):
@@ -210,9 +179,6 @@ class MatchBoiler:
         copy.indent = self.indent
         # copy.print = self.print #debug
         return copy
-
-    def filter(self, item):
-        pass
 
     def _assert_in_ascending_sorted_order(self):
         previous_score = -math.inf
@@ -246,7 +212,6 @@ class MatchBoiler:
                 results.append(item)
                 seen_a.add(item.value_a)
                 seen_b.add(item.value_b)
-                self.filter(item)
             return results, seen_a, seen_b
 
         results = []
@@ -293,10 +258,6 @@ class MatchBoiler:
                 results.append(top_item)
                 seen_a.add(top_item.value_a)
                 seen_b.add(top_item.value_b)
-                new_matches = self.filter(top_item)
-                if new_matches:
-                    matches.extend(new_matches)
-                    sort_matches(matches)
                 continue
 
             # preserve order of matching items!
@@ -324,14 +285,8 @@ class MatchBoiler:
                     results.append(item)
                     seen_a.add(item.value_a)
                     seen_b.add(item.value_b)
-                    new_matches = self.filter(item)
-                    if new_matches:
-                        matches.extend(new_matches)
-                        re_sort = True
                 else:
                     connected_items.append(item)
-            if re_sort:
-                sort_matches(matches)
 
             if not connected_items:
                 # self.print(f"{self.indent}        all items with matching scores were isolated!  no problemo!") #debug
@@ -366,11 +321,6 @@ class MatchBoiler:
 
                 experiment.seen_a.add(item.value_a)
                 experiment.seen_b.add(item.value_b)
-                new_matches = experiment.filter(item)
-                if new_matches:
-                    experiment.matches.extend(new_matches)
-                    sort_matches(experiment.matches)
-
                 experiment_results, seen_a, seen_b = experiment()
 
                 experiment_score = item.score + sum((o.score for o in experiment_results))
@@ -975,167 +925,6 @@ class Correlator:
 
         # index_padding_length = math.floor(math.log10(max(len(dataset.values) for dataset in self.datasets))) #debug
 
-        class FuzzyMatchBoiler(MatchBoiler):
-
-            # why init and not __init__?
-            # when we recurse, we use copy() to make copies
-            def init(self, index_a, index_b, fuzzy_type):
-                self.keys_a, self.fuzzy_round1plus_a = fuzzy_rounds_a[index_a][fuzzy_type]
-                self.keys_b, self.fuzzy_round1plus_b = fuzzy_rounds_b[index_b][fuzzy_type]
-                self.multiple_rounds = (self.fuzzy_round1plus_a and self.fuzzy_round1plus_b)
-
-                # match_print(indexes) #debug
-                # match_print(indexes, f"    fuzzy type {fuzzy_type}") #debug
-
-                # match_print(indexes) #debug
-                # match_print(indexes, f"            keys_a={list(self.keys_a.values())}") #debug
-                # match_print(indexes, f"            keys_b={list(self.keys_b.values())}") #debug
-                # match_print(indexes, f"            {self.multiple_rounds=}") #debug
-
-                # we only need to cache locally,
-                # this prevents us from re-calculating matches
-                # in case the match boiler runs experiments.
-                self.match_cache = {}
-
-                if self.multiple_rounds:
-                    self.filter = self.multiple_rounds_filter
-                    self._copy(self)
-
-                # sort_matches(self.matches) # harmless to do it here for presentation #debug
-                # match_print(indexes, f"            fuzzy_matches = [") #debug
-                # for item in self.matches: #debug
-                    # fuzzy_score, tuple_a, tuple_b = item #debug
-                    # fuzzy_score, weighted_score, semi_final_score = item.scores #debug
-                    # match_print(indexes, f"                {tuple_a} x {tuple_b} = {fuzzy_score=} {weighted_score=} {semi_final_score=}") #debug
-                # match_print(indexes, f"                ]") #debug
-
-                # if there's only one round of fuzzy keys,
-                # then our first pass of itertools.product(keys_a, keys_b)
-                # is all the matches we're ever gonna have.  so we should
-                # just consume from the matches we've already made,
-                # and we're done.
-                #
-                # if there are multiple rounds, then each time we pick a match,
-                # we might have another round for either or both of the keys used in the match.
-                # but!  one of those keys might be in the new highest-scoring match.
-                # so we might need to refill the hopper and re-sort fuzzy_matches etc.
-
-                # if self.matches: #debug
-                    # match_print(indexes) #debug
-                    # match_print(indexes, f"            MatchBoiler now processing matches:") #debug
-
-                self.match(itertools.product(self.keys_a.values(), self.keys_b.values()))
-
-            def match(self, pairs):
-                appended = False
-                for pair in pairs:
-                    item = self.match_cache.get(pair)
-                    if not item:
-                        tuple_a, tuple_b = pair
-                        key_a = tuple_a[0]
-                        key_b = tuple_b[0]
-                        fuzzy_score = fuzzy_score_cache[key_a][key_b]
-                        # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
-
-                        if fuzzy_score <= 0:
-                            continue
-
-                        fuzzy_score_cubed = fuzzy_score ** 3
-
-                        _, weight_a, round_a, key_reuse_penalty_factor_a = tuple_a
-                        _, weight_b, round_b, key_reuse_penalty_factor_b = tuple_b
-
-                        weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
-                        # we don't compute semi_final_score using weighted_score because I'm trying to preserve precision
-                        semi_final_score = (weight_a * weight_b) * (fuzzy_score_cubed * (key_reuse_penalty_factor_a * key_reuse_penalty_factor_b))
-
-                        # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) key_reuse=({key_reuse_penalty_factor_a}, {key_reuse_penalty_factor_b}) {weighted_score=} {semi_final_score=}") #debug
-                        item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
-                        item.scores = (fuzzy_score, weighted_score, semi_final_score)
-                        self.match_cache[pair] = item
-
-                    self.matches.append(item)
-                    appended = True
-                if appended:
-                    sort_matches(self.matches)
-
-            def _copy(self, other):
-                self.multiple_rounds = other.multiple_rounds
-                if self.multiple_rounds:
-                    self.keys_a = other.keys_a.copy()
-                    self.keys_b = other.keys_b.copy()
-                    self.round1plus_a = {key: list(value) for key, value in other.fuzzy_round1plus_a.items()}
-                    self.round1plus_b = {key: list(value) for key, value in other.fuzzy_round1plus_b.items()}
-                self.match_cache = other.match_cache
-
-            def copy(self):
-                copy = super().copy()
-                copy._copy(self)
-                return copy
-
-            def multiple_rounds_filter(self, item):
-                fuzzy_score, tuple_a, tuple_b = item
-                key_a = tuple_a[0]
-                key_b = tuple_b[0]
-
-                extend_a = None
-                try:
-                    l = self.round1plus_a[key_a]
-                    if l:
-                        tuple_a = l.pop(0)
-                        extend_a = tuple_a
-                    else:
-                        del self.round1plus_a[key_a]
-                except KeyError:
-                    pass
-                if not extend_a:
-                    del self.keys_a[key_a]
-
-                extend_b = None
-                try:
-                    l = self.round1plus_b[key_b]
-                    if l:
-                        tuple_b = l.pop(0)
-                        extend_b = tuple_b
-                    else:
-                        del self.round1plus_b[key_b]
-                except KeyError:
-                    pass
-                if not extend_b:
-                    del self.keys_b[key_b]
-
-                # we aren't repopulating
-                # go ahead and consume the next-highest match we already have
-                if not (extend_a or extend_b):
-                    return
-
-                # we're repopulating!
-                # one of these keys we're adding in might be in the new highest-scoring match
-                # so, refill the hopper with all new possible matches and start over.
-
-                # we need to *not* generate new matches against the old values of key_a and key_b here.
-                # it would be more straightforward to remove key_a from keys_a (and key_b from keys_b),
-                # but I'm trying to perturb those data structures as little as possible.
-                # so that's why I did the "if item[0] is not key_b" thing here.
-                #
-                # but!  if we have a new round of values for key_a *and* key_b,
-                # we *do* need to explicitly add the pair of key_a and key_b here.
-                pairs = []
-                if extend_a and extend_b:
-                    pairs.append((extend_a, extend_b))
-                if extend_a:
-                    pairs.extend((extend_a, t) for t in self.keys_b.values() if t[0] is not key_b)
-                if extend_b:
-                    pairs.extend((t, extend_b) for t in self.keys_a.values() if t[0] is not key_a)
-                    self.keys_b[key_b] = tuple_b
-                if extend_a:
-                    self.keys_a[key_a] = tuple_a
-
-                # match_print(indexes) #debug
-                # match_print(indexes, f"            replenishing matches with {len(pairs)} new key pairs.") #debug
-                self.match(pairs)
-
-
         for indexes in all_indexes:
             index_a, index_b = indexes
 
@@ -1221,17 +1010,8 @@ class Correlator:
 
             for fuzzy_type in fuzzy_types_in_common:
 
-                # start = time.perf_counter()
-
-                fuzzy_boiler = FuzzyMatchBoiler()
+                fuzzy_boiler = MatchBoiler()
                 # fuzzy_boiler.print = self.print #debug
-                fuzzy_boiler.init(index_a, index_b, fuzzy_type)
-                fuzzy_matches, _, _ = fuzzy_boiler()
-
-                # middle = time.perf_counter()
-
-                fuzzy2_boiler = MatchBoiler()
-                # fuzzy2_boiler.print = self.print #debug
 
                 f2_keys_a, f2_fuzzy_round1plus_a = fuzzy_types_a[fuzzy_type]
                 f2_keys_b, f2_fuzzy_round1plus_b = fuzzy_types_b[fuzzy_type]
@@ -1242,15 +1022,6 @@ class Correlator:
                 f2_all_keys_b = list(f2_keys_b.values())
                 for value in f2_fuzzy_round1plus_b.values():
                     f2_all_keys_b.extend(value)
-
-                # fuzzy_round[fuzzy_type] = (fuzzy_round0, fuzzy_round1plus)
-
-                # for key, weights in fuzzy_keys.items():
-                #     assert weights
-                #     total_key_counter += len(weights)
-                #     fuzzy_round0[key] = (key, weights[0], 0, 1)
-                #     if len(weights) > 1:
-                #         fuzzy_round1plus[key] = list( (key, weight, round, (key_reuse_penalty_factor ** round)) for round, weight in enumerate(weights[1:], 1) )
 
                 for pair in itertools.product(f2_all_keys_a, f2_all_keys_b):
                     tuple_a, tuple_b = pair
@@ -1279,22 +1050,14 @@ class Correlator:
                     item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
                     item.scores = (fuzzy_score, weighted_score, semi_final_score)
                     item.sort_by = sort_by
-                    fuzzy2_boiler.matches.append(item)
-                fuzzy2_boiler.matches.sort(key=lambda x : x.sort_by)
-                # print(">> fuzzy2_boiler.matches ")
-                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy2_boiler.matches)))
+                    fuzzy_boiler.matches.append(item)
+                fuzzy_boiler.matches.sort(key=lambda x : x.sort_by)
+                # print(">> fuzzy_boiler.matches ")
+                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy_boiler.matches)))
 
-                fuzzy2_matches, _, _ = fuzzy2_boiler()
+                fuzzy_matches, _, _ = fuzzy_boiler()
 
                 # end = time.perf_counter()
-
-                # print(">> fuzzy_matches <<")
-                # pprint.pprint(fuzzy_matches)
-                # print(">> fuzzy2_matches <<")
-                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy2_matches)))
-                for m1, m2 in zip(fuzzy_matches, fuzzy2_matches):
-                    assert m1.value_a == m2.value_a, f"mismatch in value_a! {m1=} {m2=}"
-                    assert m1.value_b == m2.value_b, f"mismatch in value_b! {m1=} {m2=}"
 
                 for item in fuzzy_matches:
                     fuzzy_score, tuple_a, tuple_b = item
