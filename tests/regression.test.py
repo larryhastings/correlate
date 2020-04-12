@@ -230,6 +230,7 @@ def match_boiler_test(verbose):
             pprint("matches", matches)
         boiler = MatchBoiler()
         boiler.matches = list(matches)
+        sort_matches(boiler.matches)
         result, seen_a, seen_b = boiler()
         if verbose:
             pprint("result", result)

@@ -17,6 +17,36 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
+#   * remove callback from match boiler
+#       * storage format for fuzzy matches:
+#            round_a = round# for key a
+#            round_b = round# for key b
+#            lowest_round = min(round_a, round_b)
+#            highest_round = max(round_a, round_b)
+#            score=(fuzzy_score, -lowest_round, -highest_round)
+#
+#   * match boiler is gale-shipley with operations reordered
+#
+#   * match_boiler:
+#       * when processing connected_items, pick apart into separate connected blobs where possible
+#           * if
+#
+#   * the gale-shipley boiler!
+#       * use gale-shipley, with these tweaks:
+#           * A, B, C are men, X, Y, Z are women
+#           * preference is established by score for values
+#           * preference is established by (fuzzy_score, round#) for fuzzy keys
+#           * if the score between A and X is 0, you always reject
+#           * if A is married to X and B asks X to trade up, and A:X and B:X
+#             have the same preference, you recurse! like the boiler!
+#           * don't enforce that everybody gets married
+#               * the larger set is always the "men"
+#               * if a man exhausts his list of preferences and remains single,
+#                 he's stuck being single
+#       * run in parallel with the match boiler
+#           * see who gets the higher cumulative score!
+#           * see who takes longer!
+#
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
 #         two rankings for a and b are absolute and should be the same.
@@ -121,6 +151,10 @@ class MatchBoiler:
       * "score" must be a number.
       * "value_a" and "value_b" must support equality testing and must be hashable.
     The matches list is modified--if you don't want that, pass in a copy.
+    The matches list you pass in MUST be sorted, with highest scores at the end.
+      MatchBoiler is very careful to be stable, so it avoids re-sorting the list
+      as it runs.  (Technically the list only has to be sorted at the time you call
+      the object.)
 
     To actually compute the boiled-down list of matches, call the object.
     This returns a tuple of (results, seen_a, seen_b):
@@ -156,24 +190,34 @@ class MatchBoiler:
     (The easy way to do that: call "sort_matches(self.matches)".)
     """
 
-    def __init__(self, *, matches = None, reuse_a=False, reuse_b=False):
+    def __init__(self, *, matches = None, reuse_a=False, reuse_b=False, indent=""):
         self.reuse_a = reuse_a
         self.reuse_b = reuse_b
         self.seen_a = set()
         self.seen_b = set()
+        self.indent = indent
         if matches is None:
             matches = []
         self.matches = matches
+        # self.print = print #debug
 
     def copy(self):
         copy = self.__class__(reuse_a=self.reuse_a, reuse_b=self.reuse_b)
         copy.seen_a = self.seen_a.copy()
         copy.seen_b = self.seen_b.copy()
         copy.matches = self.matches.copy()
+        copy.indent = self.indent
+        # copy.print = self.print #debug
         return copy
 
     def filter(self, item):
         pass
+
+    def _assert_in_ascending_sorted_order(self):
+        previous_score = -math.inf
+        for i, item in enumerate(self.matches):
+            assert previous_score <= item.score, f"match_boiler.matches not in ascending sorted order! {previous_score=} > matches[{i}].score {item.score}"
+        return True
 
     def __call__(self):
         """
@@ -184,13 +228,15 @@ class MatchBoiler:
         * there must not be two items A and B in "matches"
           such that (A.value_a == B.value_b) and (A.value_b == B.value_b).
         """
+        assert self._assert_in_ascending_sorted_order()
+
         matches = self.matches
         reuse_a = self.reuse_a
         reuse_b = self.reuse_b
         seen_a  = self.seen_a
         seen_b  = self.seen_b
 
-        sort_matches(matches)
+        # sort_matches(matches)
 
         if (reuse_a and reuse_b):
             results = []
@@ -204,15 +250,22 @@ class MatchBoiler:
 
         results = []
 
+        # self.print(f"{self.indent}match_boiler [{hex(id(self))[2:]}]: begin boiling {len(self.matches)} items!") #debug
+        # self.print(f"{self.indent}    {len(self.matches)} items:") #debug
+        # for item in self.matches: #debug
+            # self.print(f"{self.indent}        {item}") #debug
+
         while matches:
             # consume the top-scoring item from matches.
             top_item = matches.pop()
+            # self.print(f"{self.indent}    considering {top_item}") #debug
             # if we've already used value_a or value_b, discard
             if (
                 ((not reuse_a) and (top_item.value_a in seen_a))
                 or
                 ((not reuse_b) and (top_item.value_b in seen_b))
                 ):
+                # self.print(f"{self.indent}        already used value_a or value_b, discarding.") #debug
                 continue
 
             # now consume all other items from matches that have the same score.
@@ -236,6 +289,7 @@ class MatchBoiler:
             # keep it and proceed as normal.
             assert matching_items
             if len(matching_items) == 1:
+                # self.print(f"{self.indent}        no other items with a matching score!  keep it!") #debug
                 results.append(top_item)
                 seen_a.add(top_item.value_a)
                 seen_b.add(top_item.value_b)
@@ -245,8 +299,11 @@ class MatchBoiler:
                     sort_matches(matches)
                 continue
 
+            # preserve order of matching items!
+            matching_items = list(reversed(matching_items))
             # okay, we really do have multiple items with the same score.
             # count how many times each value_a and value_b appear in the list.
+            # self.print(f"{self.indent}        {len(matching_items)} matching items.  let's keep any that are disjoint.") #debug
             a = defaultdict(int)
             b = defaultdict(int)
             for item in matching_items:
@@ -263,10 +320,11 @@ class MatchBoiler:
             re_sort = False
             for item in matching_items:
                 if a[item.value_a] == b[item.value_b] == 1:
+                    # self.print(f"{self.indent}        keeping isolated {item=}") #debug
                     results.append(item)
                     seen_a.add(item.value_a)
                     seen_b.add(item.value_b)
-                    new_matches = self.filter(top_item)
+                    new_matches = self.filter(item)
                     if new_matches:
                         matches.extend(new_matches)
                         re_sort = True
@@ -276,6 +334,7 @@ class MatchBoiler:
                 sort_matches(matches)
 
             if not connected_items:
+                # self.print(f"{self.indent}        all items with matching scores were isolated!  no problemo!") #debug
                 continue
 
             # okay.  we need to recursively run experiments.
@@ -284,39 +343,48 @@ class MatchBoiler:
             # of the "scores" list.  then for each of these
             # experiments, compute the cumulative score.  then
             # keep the experiment with the greatest total score.
+            #
+            # this code preserves:
+            #    * processing connected items in order
+            #    * storing their results in order
+            # the goal being: if the scores are all equivalent,
+            # consume the first one.
             assert len(connected_items) >= 2
+            # self.print(f"{self.indent}        {len(connected_items)} connected items remain.  try each experimentally, recursively.") #debug
             all_experiment_results = []
-            for i, item in enumerate(connected_items):
+            for i in range(len(connected_items) - 1, -1, -1):
                 experiment = self.copy()
+                experiment.indent += "        "
+                matches = connected_items.copy()
+                item = matches.pop(i)
+                experiment.matches.extend(matches)
+                # self.print(f"{self.indent}        experiment #{len(connected_items) - i}: keep {item}") #debug
 
                 experiment.seen_a.add(item.value_a)
                 experiment.seen_b.add(item.value_b)
-                new_matches = experiment.filter(top_item)
+                new_matches = experiment.filter(item)
                 if new_matches:
                     experiment.matches.extend(new_matches)
-
-                # experiment_matches = [x for x in connected if x != item]
-                experiment_matches = list(connected_items)
-                experiment_matches.pop(i)
-                experiment.matches.extend(experiment_matches)
-
-                sort_matches(experiment.matches)
+                    sort_matches(experiment.matches)
 
                 experiment_results, _, _ = experiment()
 
                 experiment_score = item.score + sum((o.score for o in experiment_results))
                 all_experiment_results.append( (experiment_score, experiment, item, experiment_results) )
 
-            all_experiment_results.sort(key=lambda o: o[0])
+            #
+            all_experiment_results.sort(key=lambda o: o[0], reverse=True)
 
             # these have already been filtered!
-            experiment_score, experiment, item, experiment_results = all_experiment_results[-1]
+            experiment_score, experiment, item, experiment_results = all_experiment_results[0]
             results.append(item)
             results.extend(experiment_results)
             seen_a = experiment.seen_a
             seen_b = experiment.seen_b
             break
 
+        # self.print(f"{self.indent}    returning {len(results)=}, {len(seen_a)=}, {len(seen_b)=}") #debug
+        # self.print() #debug
         return results, seen_a, seen_b
 
 
@@ -1152,8 +1220,72 @@ class Correlator:
             for fuzzy_type in fuzzy_types_in_common:
 
                 fuzzy_boiler = FuzzyMatchBoiler()
+                # fuzzy_boiler.print = self.print #debug
                 fuzzy_boiler.init(index_a, index_b, fuzzy_type)
                 fuzzy_matches, _, _ = fuzzy_boiler()
+
+                fuzzy2_boiler = MatchBoiler()
+                # fuzzy2_boiler.print = self.print #debug
+
+                f2_keys_a, f2_fuzzy_round1plus_a = fuzzy_types_a[fuzzy_type]
+                f2_keys_b, f2_fuzzy_round1plus_b = fuzzy_types_b[fuzzy_type]
+
+                f2_all_keys_a = list(f2_keys_a.values())
+                for value in f2_fuzzy_round1plus_a.values():
+                    f2_all_keys_a.extend(value)
+                f2_all_keys_b = list(f2_keys_b.values())
+                for value in f2_fuzzy_round1plus_b.values():
+                    f2_all_keys_b.extend(value)
+
+                # fuzzy_round[fuzzy_type] = (fuzzy_round0, fuzzy_round1plus)
+
+                # for key, weights in fuzzy_keys.items():
+                #     assert weights
+                #     total_key_counter += len(weights)
+                #     fuzzy_round0[key] = (key, weights[0], 0, 1)
+                #     if len(weights) > 1:
+                #         fuzzy_round1plus[key] = list( (key, weight, round, (key_reuse_penalty_factor ** round)) for round, weight in enumerate(weights[1:], 1) )
+
+                for pair in itertools.product(f2_all_keys_a, f2_all_keys_b):
+                    tuple_a, tuple_b = pair
+                    key_a = tuple_a[0]
+                    key_b = tuple_b[0]
+                    fuzzy_score = fuzzy_score_cache[key_a][key_b]
+                    # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
+
+                    if fuzzy_score <= 0:
+                        continue
+
+                    fuzzy_score_cubed = fuzzy_score ** 3
+
+                    _, weight_a, round_a, key_reuse_penalty_factor_a = tuple_a
+                    _, weight_b, round_b, key_reuse_penalty_factor_b = tuple_b
+
+                    weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
+                    # we don't compute semi_final_score using weighted_score because I'm trying to preserve precision
+                    semi_final_score = (weight_a * weight_b) * (fuzzy_score_cubed * (key_reuse_penalty_factor_a * key_reuse_penalty_factor_b))
+
+                    lowest_round = min(round_a, round_b)
+                    highest_round = max(round_a, round_b)
+                    sort_by = (fuzzy_score, -lowest_round, -highest_round)
+
+                    # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) key_reuse=({key_reuse_penalty_factor_a}, {key_reuse_penalty_factor_b}) {weighted_score=} {semi_final_score=}") #debug
+                    item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
+                    item.scores = (fuzzy_score, weighted_score, semi_final_score)
+                    item.sort_by = sort_by
+                    fuzzy2_boiler.matches.append(item)
+                fuzzy2_boiler.matches.sort(key=lambda x : x.sort_by)
+                # print(">> fuzzy2_boiler.matches ")
+                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy2_boiler.matches)))
+
+                fuzzy2_matches, _, _ = fuzzy2_boiler()
+                # print(">> fuzzy_matches <<")
+                # pprint.pprint(fuzzy_matches)
+                # print(">> fuzzy2_matches <<")
+                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy2_matches)))
+                for m1, m2 in zip(fuzzy_matches, fuzzy2_matches):
+                    assert m1.value_a == m2.value_a, f"mismatch in value_a! {m1=} {m2=}"
+                    assert m1.value_b == m2.value_b, f"mismatch in value_b! {m1=} {m2=}"
 
                 for item in fuzzy_matches:
                     fuzzy_score, tuple_a, tuple_b = item
@@ -1285,6 +1417,7 @@ class Correlator:
         # fourth pass!
         for correlations in fourth_pass:
             boiler = MatchBoiler(reuse_a=reuse_a, reuse_b=reuse_b)
+            # boiler.print = self.print #debug
             matches = correlations.matches
             sort_matches(matches)
             boiler.matches = matches

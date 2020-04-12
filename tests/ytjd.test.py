@@ -121,6 +121,7 @@ def main(argv):
         t = YTJDTest()
         t.__dict__.update(flags)
         t(verbose)
+    print("All tests passed.")
     return 0
 
 class YTJDTest:
