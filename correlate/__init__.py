@@ -89,6 +89,7 @@ from itertools import zip_longest
 import math
 import pprint
 import string
+import time
 
 __version__ = "0.5.2"
 
@@ -250,7 +251,7 @@ class MatchBoiler:
 
         results = []
 
-        # self.print(f"{self.indent}match_boiler [{hex(id(self))[2:]}]: begin boiling {len(self.matches)} items!") #debug
+        # self.print(f"{self.indent}match boiler [{hex(id(self))[2:]}]: begin boiling!") #debug
         # self.print(f"{self.indent}    {len(self.matches)} items:") #debug
         # for item in self.matches: #debug
             # self.print(f"{self.indent}        {item}") #debug
@@ -273,7 +274,7 @@ class MatchBoiler:
             top_score = top_item.score
             matching_items = [top_item]
             while matches:
-                if matches[-1].score != top_item.score:
+                if matches[-1].score != top_score:
                     break
                 matching_item = matches.pop()
                 if (
@@ -287,7 +288,6 @@ class MatchBoiler:
             # if the top item's score was unique
             # (which is nearly always true),
             # keep it and proceed as normal.
-            assert matching_items
             if len(matching_items) == 1:
                 # self.print(f"{self.indent}        no other items with a matching score!  keep it!") #debug
                 results.append(top_item)
@@ -358,6 +358,10 @@ class MatchBoiler:
                 matches = connected_items.copy()
                 item = matches.pop(i)
                 experiment.matches.extend(matches)
+                if not reuse_a:
+                    experiment.matches = [match for match in experiment.matches if match.value_a != item.value_a]
+                if not reuse_b:
+                    experiment.matches = [match for match in experiment.matches if match.value_b != item.value_b]
                 # self.print(f"{self.indent}        experiment #{len(connected_items) - i}: keep {item}") #debug
 
                 experiment.seen_a.add(item.value_a)
@@ -367,20 +371,18 @@ class MatchBoiler:
                     experiment.matches.extend(new_matches)
                     sort_matches(experiment.matches)
 
-                experiment_results, _, _ = experiment()
+                experiment_results, seen_a, seen_b = experiment()
 
                 experiment_score = item.score + sum((o.score for o in experiment_results))
-                all_experiment_results.append( (experiment_score, experiment, item, experiment_results) )
+                all_experiment_results.append( (experiment_score, experiment, item, experiment_results, seen_a, seen_b) )
 
             #
             all_experiment_results.sort(key=lambda o: o[0], reverse=True)
 
             # these have already been filtered!
-            experiment_score, experiment, item, experiment_results = all_experiment_results[0]
+            experiment_score, experiment, item, experiment_results, seen_a, seen_b = all_experiment_results[0]
             results.append(item)
             results.extend(experiment_results)
-            seen_a = experiment.seen_a
-            seen_b = experiment.seen_b
             break
 
         # self.print(f"{self.indent}    returning {len(results)=}, {len(seen_a)=}, {len(seen_b)=}") #debug
@@ -1219,10 +1221,14 @@ class Correlator:
 
             for fuzzy_type in fuzzy_types_in_common:
 
+                # start = time.perf_counter()
+
                 fuzzy_boiler = FuzzyMatchBoiler()
                 # fuzzy_boiler.print = self.print #debug
                 fuzzy_boiler.init(index_a, index_b, fuzzy_type)
                 fuzzy_matches, _, _ = fuzzy_boiler()
+
+                # middle = time.perf_counter()
 
                 fuzzy2_boiler = MatchBoiler()
                 # fuzzy2_boiler.print = self.print #debug
@@ -1279,6 +1285,9 @@ class Correlator:
                 # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy2_boiler.matches)))
 
                 fuzzy2_matches, _, _ = fuzzy2_boiler()
+
+                # end = time.perf_counter()
+
                 # print(">> fuzzy_matches <<")
                 # pprint.pprint(fuzzy_matches)
                 # print(">> fuzzy2_matches <<")
