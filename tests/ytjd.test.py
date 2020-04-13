@@ -18,6 +18,64 @@ import time
 
 from rapidfuzz.fuzz import ratio
 
+# sorted from fastest to slowest
+# as observed on my workstation
+tests = [
+
+    {
+    "dataset_b": "script_first_pages",
+    "use_fuzzy_search_for_title": False,
+    "use_episode_number_as_ranking": True,
+    },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_search_for_title": False,
+    "use_episode_number_as_ranking": True,
+    },
+
+    {
+    "dataset_b": "script_first_pages",
+    "use_fuzzy_search_for_title": False,
+    "use_episode_number_as_ranking": False,
+    "minimum_score": 0.2,
+    },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_search_for_title": False,
+    "use_episode_number_as_ranking": False,
+    },
+
+    {
+    "dataset_b": "script_first_pages",
+    "use_fuzzy_search_for_title": True,
+    "use_episode_number_as_ranking": True,
+    "minimum_score": 0.1,
+    },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_search_for_title": True,
+    "use_episode_number_as_ranking": True,
+    },
+
+    {
+    "dataset_b": "script_first_pages",
+    "use_fuzzy_search_for_title": True,
+    "use_episode_number_as_ranking": False,
+    "minimum_score": 0.2,
+    },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_search_for_title": True,
+    "use_episode_number_as_ranking": False,
+    },
+
+]
+
+
 def usage(error=None):
     if error:
         print(f"Error: {error}")
@@ -30,88 +88,57 @@ def usage(error=None):
     print("it runs only that test; if you specify two numbers it runs those tests and")
     print("all tests in-between.")
     print()
+    print(f"There are {len(tests)} tests, numbered 1 through {len(tests)}.  So <test-number> and <stop-test-number>")
+    print(f"should both be >= 1 and <= {len(tests)}.")
+    print()
     print("Specifying -v or --verbose increases the amount of output.")
     print("There are two verbosity levels.")
+    print()
     sys.exit(0)
 
 def main(argv):
-    # sorted from fastest to slowest
-    # as observed on my workstation
-    tests = [
-
-        {
-        "dataset_b": "script_first_pages",
-        "use_fuzzy_search_for_title": False,
-        "use_episode_number_as_ranking": True,
-        },
-
-        {
-        "dataset_b": "best",
-        "use_fuzzy_search_for_title": False,
-        "use_episode_number_as_ranking": True,
-        },
-
-        {
-        "dataset_b": "script_first_pages",
-        "use_fuzzy_search_for_title": False,
-        "use_episode_number_as_ranking": False,
-        "minimum_score": 0.2,
-        },
-
-        {
-        "dataset_b": "best",
-        "use_fuzzy_search_for_title": False,
-        "use_episode_number_as_ranking": False,
-        },
-
-        {
-        "dataset_b": "script_first_pages",
-        "use_fuzzy_search_for_title": True,
-        "use_episode_number_as_ranking": True,
-        "minimum_score": 0.1,
-        },
-
-        {
-        "dataset_b": "best",
-        "use_fuzzy_search_for_title": True,
-        "use_episode_number_as_ranking": True,
-        },
-
-        {
-        "dataset_b": "script_first_pages",
-        "use_fuzzy_search_for_title": True,
-        "use_episode_number_as_ranking": False,
-        "minimum_score": 0.2,
-        },
-
-        {
-        "dataset_b": "best",
-        "use_fuzzy_search_for_title": True,
-        "use_episode_number_as_ranking": False,
-        },
-
-    ]
 
     verbose = 0
-    start = 0
-    end = len(tests)
+    start = None
+    end = None
 
-    while argv and argv[0].startswith("-"):
-        arg = argv.pop(0)
-        if arg in {'-v', '--verbose'}:
-            verbose += 1
+    for arg in argv:
+        if arg.startswith("-"):
+            if arg in {'-v', '--verbose'}:
+                verbose += 1
+                continue
+            usage(f"unknown flag {arg}")
+
+        if start is None:
+            start = int(arg)
+            if start < 1:
+                usage(f"c'mon, man, start has to be 0 or greater.  what are you even doing?!")
+            if start > len(tests):
+                usage(f"start value {start} is too high.  there are only {len(tests)} tests.")
             continue
-        usage(f"unknown flag {arg}")
 
-    if len(argv):
-        start = int(argv[0])
-        if len(argv) > 1:
-            end = int(argv[1])
+        if end is None:
+            end = int(arg)
+            if end < 1:
+                usage(f"c'mon, man, end has to be 1 or greater.  are you crazy?")
+            if end > len(tests):
+                usage(f"end value {end} is too high.  there are only {len(tests)} tests.")
+            if end < start:
+                usage(f"end is less than start.  what, are you from backwardsville?")
+            continue
+
+        usage("too many positional parameters.")
+
+
+    if end is None:
+        if start is None:
+            end = len(tests)
         else:
             end = start
+    if start is None:
+        start = 0
 
-
-    for i, flags in enumerate(tests):
+    for i, flags in enumerate(tests, 1):
         if not (start <= i <= end):
             continue
         if verbose:

@@ -683,6 +683,27 @@ There are a number of concepts involved with how the **correlate**
 algorithm works, each of which I'll explain in exhausting detail
 in the following sub-sections.
 
+### Streamlined Data
+
+The **correlate** datasets store data in a format designed
+to eliminate redundancy and be easy to modify.  But this representation
+is inconvenient for performing the actual correlate.  Therefore,
+the first step is to reprocess the data into a "streamlined" format.
+This is an internal-only implementation detail, and in fact the data
+is thrown away at the end of each correlation.  As an end-user you'll
+never have to deal with it.  It's only documented here just in case you
+ever need to understand the implementation of **correlate**.
+
+This streamlined data representation is an important optimization.
+It greatly speeds up computing a match between two values.  And it
+only costs a little overhead, compared to all that matching work.
+Consider: if you have 600 values in `dataset_a` and 600 values in
+`dataset_b`, **correlate** will recompute 1,200 streamlined datasets.
+But it'll then use it in as many as 360,000 comparisons!   That's
+why precomputing the streamlined format is such a big win.
+
+Speaking of internal representations of data...
+
 ### Rounds
 
 If you call **correlate** as follows:
