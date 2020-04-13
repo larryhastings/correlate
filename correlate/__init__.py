@@ -524,12 +524,10 @@ class Correlator:
             # if no keys, exact_rounds[index] = [] # empty list
             exact_rounds = []
 
-            # fuzzy_rounds[index][type] = (fuzzy_round0, fuzzy_round1plus)
-            # fuzzy_round0 = {fuzzy_key: (weight, round#, key_reuse_penalty)}
-            # fuzzy_round1plus = {fuzzy_key: ((weight, round#, key_reuse_penalty), (weight, round#, key_reuse_penalty), ...)}
-            # if no keys, fuzzy_rounds[index][type] won't be set
-            # if all keys only have one round, fuzzy_round1plus will be empty
-            fuzzy_rounds = []
+            # fuzzy_types[index][type] = [(key, weight, round#, key_reuse_penalty), ...]
+            # all rounds are merged together
+            # if no keys, fuzzy_types[index][type] won't be set
+            fuzzy_types = []
 
             # total_keys[index] = count
             # used for score_ratio_bonus
@@ -561,26 +559,26 @@ class Correlator:
 
                 exact_rounds.append(rounds)
 
-                fuzzy_round = {}
-                fuzzy_rounds.append(fuzzy_round)
+                types = {}
+                fuzzy_types.append(types)
 
-                for fuzzy_type, fuzzy_keys in type_to_key.items():
-                    if fuzzy_type is None:
+                key_penalties = [ key_reuse_penalty_factor ** round for round in range(self._max_round) ]
+
+                for t, k in type_to_key.items():
+                    if t is None:
                         continue
 
-                    assert fuzzy_keys
-                    all_fuzzy_keys[fuzzy_type].update(fuzzy_keys)
+                    assert k
+                    all_fuzzy_keys[t].update(k)
 
-                    fuzzy_round0 = {}
-                    fuzzy_round1plus = {}
-                    fuzzy_round[fuzzy_type] = (fuzzy_round0, fuzzy_round1plus)
+                    keys = []
+                    types[t] = keys
 
-                    for key, weights in fuzzy_keys.items():
+                    for key, weights in k.items():
                         assert weights
                         total_key_counter += len(weights)
-                        fuzzy_round0[key] = (key, weights[0], 0, 1)
-                        if len(weights) > 1:
-                            fuzzy_round1plus[key] = list( (key, weight, round, (key_reuse_penalty_factor ** round)) for round, weight in enumerate(weights[1:], 1) )
+                        for round, weight in enumerate(weights):
+                            keys.append( (key, weight, round, key_penalties[round]) )
 
                 total_keys.append(total_key_counter)
 
@@ -589,7 +587,7 @@ class Correlator:
                 all_exact_keys,
                 all_fuzzy_keys,
                 exact_rounds,
-                fuzzy_rounds,
+                fuzzy_types,
                 total_keys,
                 )
 
@@ -687,12 +685,13 @@ class Correlator:
         empty_set = set()
         empty_dict = {}
 
-        all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_rounds_a, total_keys_a = a._precompute_streamlined_data(b, key_reuse_penalty_factor)
-        all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_rounds_b, total_keys_b = b._precompute_streamlined_data(a, key_reuse_penalty_factor)
+        all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = a._precompute_streamlined_data(b, key_reuse_penalty_factor)
+        all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = b._precompute_streamlined_data(a, key_reuse_penalty_factor)
 
-        # for dataset, exact_rounds, fuzzy_rounds in ( #debug
-            # (self.dataset_a, exact_rounds_a, fuzzy_rounds_a), #debug
-            # (self.dataset_b, exact_rounds_b, fuzzy_rounds_b), #debug
+        # dump datasets
+        # for dataset, exact_rounds, fuzzy_types in ( #debug
+            # (self.dataset_a, exact_rounds_a, fuzzy_types_a), #debug
+            # (self.dataset_b, exact_rounds_b, fuzzy_types_b), #debug
             # ): #debug
             # self.print(f"[dataset {dataset.id}]") #debug
             # def print_key_and_weight(key, weight): #debug
@@ -702,48 +701,30 @@ class Correlator:
                     # weight_suffix = "" #debug
                 # self.print(f"                {key!r}{weight_suffix}") #debug
 
-            # for index, (value, exact_round, fuzzy_round) in enumerate(zip(dataset.values, exact_rounds, fuzzy_rounds)): #debug
+            # for index, (value, exact_round, fuzzy_round) in enumerate(zip(dataset.values, exact_rounds, fuzzy_types)): #debug
                 # self.print(f"    value {index} {value!r}") #debug
                 # if exact_round: #debug
-                    # self.print(f"        exact_keys") #debug
+                    # self.print(f"        exact keys") #debug
                 # for round_number, (keys, weights) in enumerate(exact_round): #debug
                     # self.print(f"            round {round_number}") #debug
                     # keys = list(sorted(keys)) #debug
                     # for key in keys: #debug
                         # print_key_and_weight(key, weights[key][1]) #debug
 
-                # for fuzzy_type, (fuzzy_round0, fuzzy_round1plus) in fuzzy_round.items(): #debug
+                # for fuzzy_type, fuzzy_keys in fuzzy_round.items(): #debug
                     # self.print(f"        fuzzy type {fuzzy_type}") #debug
 
-                    # if fuzzy_round1plus: #debug
-                        # fuzzy_round0 = dict(fuzzy_round0) #debug
-                        # fuzzy_round1plus = {k: iter(v) for k, v in fuzzy_round1plus.items()} #debug
-
-                    # round_number = 0 #debug
-                    # while fuzzy_round0: #debug
+                    # for round_number in range(dataset._max_round): #debug
                         # self.print(f"            round {round_number}") #debug
-                        # for key, value0 in fuzzy_round0.items(): #debug
-                            # print_key_and_weight(key, value0[1]) #debug
-                        # round_number += 1 #debug
-
-                        # if not fuzzy_round1plus: #debug
+                        # printed = False #debug
+                        # for t in fuzzy_keys: #debug
+                            # key, weight, round, penalty = t #debug
+                            # if round == round_number: #debug
+                                # printed = True #debug
+                                # print_key_and_weight(key, weight) #debug
+                        # if not printed: #debug
                             # break #debug
-
-                        # keys_to_delete = [] #debug
-                        # for key in tuple(fuzzy_round0): #debug
-                            # try: #debug
-                                # i = fuzzy_round1plus[key] #debug
-                                # v = next(i) #debug
-                                # fuzzy_round0[key] = v #debug
-                            # except (KeyError, StopIteration): #debug
-                                # keys_to_delete.append(key) #debug
-
-                        # for key in keys_to_delete: #debug
-                            # del fuzzy_round0[key] #debug
-                            # try: #debug
-                                # del fuzzy_round1plus[key] #debug
-                            # except KeyError: #debug
-                                # pass #debug
+                        # round_number += 1 #debug
 
                 # self.print() #debug
 
@@ -994,8 +975,8 @@ class Correlator:
             # we're only interested in types that are in both a and b
             # therefore we can iterate over a and check for it in b
 
-            fuzzy_types_a = fuzzy_rounds_a[index_a]
-            fuzzy_types_b = fuzzy_rounds_b[index_b]
+            fuzzy_a = fuzzy_types_a[index_a]
+            fuzzy_b = fuzzy_types_b[index_b]
             # TODO
             #
             # this is a possible source of randomness in the algorithm.
@@ -1004,29 +985,20 @@ class Correlator:
             # if it's for a fuzzy type we haven't seen before,
             # assign that fuzzy type a monotonically increasing serial number.
             # then sort by those.
-            fuzzy_types_in_common = fuzzy_types_a.keys() & fuzzy_types_b.keys()
+            fuzzy_types_in_common = fuzzy_a.keys() & fuzzy_b.keys()
 
             fuzzy_semifinal_matches = []
 
             for fuzzy_type in fuzzy_types_in_common:
 
+                # start = time.perf_counter()
                 fuzzy_boiler = MatchBoiler()
                 # fuzzy_boiler.print = self.print #debug
 
-                f2_keys_a, f2_fuzzy_round1plus_a = fuzzy_types_a[fuzzy_type]
-                f2_keys_b, f2_fuzzy_round1plus_b = fuzzy_types_b[fuzzy_type]
-
-                f2_all_keys_a = list(f2_keys_a.values())
-                for value in f2_fuzzy_round1plus_a.values():
-                    f2_all_keys_a.extend(value)
-                f2_all_keys_b = list(f2_keys_b.values())
-                for value in f2_fuzzy_round1plus_b.values():
-                    f2_all_keys_b.extend(value)
-
-                for pair in itertools.product(f2_all_keys_a, f2_all_keys_b):
+                for pair in itertools.product(fuzzy_a[fuzzy_type], fuzzy_b[fuzzy_type]):
                     tuple_a, tuple_b = pair
-                    key_a = tuple_a[0]
-                    key_b = tuple_b[0]
+                    key_a, weight_a, round_a, key_reuse_penalty_factor_a = tuple_a
+                    key_b, weight_b, round_b, key_reuse_penalty_factor_b = tuple_b
                     fuzzy_score = fuzzy_score_cache[key_a][key_b]
                     # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
 
@@ -1034,9 +1006,6 @@ class Correlator:
                         continue
 
                     fuzzy_score_cubed = fuzzy_score ** 3
-
-                    _, weight_a, round_a, key_reuse_penalty_factor_a = tuple_a
-                    _, weight_b, round_b, key_reuse_penalty_factor_b = tuple_b
 
                     weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
                     # we don't compute semi_final_score using weighted_score because I'm trying to preserve precision
@@ -1055,9 +1024,10 @@ class Correlator:
                 # print(">> fuzzy_boiler.matches ")
                 # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy_boiler.matches)))
 
-                fuzzy_matches, _, _ = fuzzy_boiler()
+                fuzzy_matches = fuzzy_boiler()[0]
 
                 # end = time.perf_counter()
+                # print(f">> fuzzy boiling time {end - start}")
 
                 for item in fuzzy_matches:
                     fuzzy_score, tuple_a, tuple_b = item
