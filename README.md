@@ -1424,3 +1424,31 @@ would produce the stable match with the highest score.
 (I admit, I wasn't able to come up with an example where Gail-Shapley would view two solutions as
 equally desirable, but **correlate** would definitely prefer one over the other. Maybe this last
 thing isn't an actual problem.)
+
+## Version History
+
+**0.6**
+
+Big performance boost in "fuzzy boiling"!  Clever sorting of fuzzy matches,
+and improvements in the stability (as in "stable sort") of `MatchBoiler`,
+allowed using an unmodified boiler to process fuzzy matches.  This allowed
+removal of `FuzzyMatchBoiler` and the `MatchBoiler.filter()` callback mechanism.
+
+Minor performance improvement in `MatchBoiler`: when recursing, find the
+smallest group of connected matches with the same score,
+and only recursively check each of those,
+rather than all possibly-connected matches with the same score.
+
+The cumulative effect: a speedup of up to 30% in fuzzy match boiling,
+and up to 5% on YTJD tests using a lot of fuzzy keys.  Match boiling got
+slightly faster too.
+
+**0.5.1**
+
+Bugfix release.  In the original version, if a match didn't have any matches between
+fuzzy keys (with a positive score), it ignored the weights of its exact keys and just
+used the raw exact score.
+
+**0.5**
+
+Initial public release.

@@ -17,13 +17,6 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
-#   * match_boiler:
-#       * when processing connected_items, pick apart into separate connected blobs where possible
-#           * if there are 5 matches in a row with the same score, and there are
-#             two groups inside A-B-C and D-E connected within themselves,
-#             it's cheaper to just process D-E
-#               * you'll have to recurse on A-B-C too but you do that inside D-E
-#
 #   * doc: match boiler is gale-shipley with operations reordered/unrolled
 #
 #   * doc: new fuzzy boiler approach
@@ -235,7 +228,7 @@ class MatchBoiler:
     """
 
     def __init__(self, *, matches = None, reuse_a=False, reuse_b=False,
-        # name="'match boiler'", indent="", #debug
+        # name="match boiler", indent="", #debug
         ):
         self.reuse_a = reuse_a
         self.reuse_b = reuse_b
@@ -408,7 +401,7 @@ class MatchBoiler:
                     experiment.matches = [match for match in experiment.matches if match.value_a not in e_seen_a]
                 elif not reuse_b:
                     experiment.matches = [match for match in experiment.matches if match.value_b not in e_seen_b]
-                # self.print(f"{self.indent}        experiment #{len(connected_items) - i}: keep {item}") #debug
+                # self.print(f"{self.indent}        experiment #{len(group) - i}: keep {item}") #debug
 
                 experiment_results, seen_a, seen_b = experiment()
 
@@ -1085,7 +1078,7 @@ class Correlator:
                 # start = time.perf_counter() #debug
 
                 fuzzy_boiler = MatchBoiler()
-                # fuzzy_boiler.name = "'fuzzy boiler'" #debug
+                # fuzzy_boiler.name = "fuzzy boiler" #debug
                 # fuzzy_boiler.print = self.print #debug
 
                 for pair in itertools.product(fuzzy_a[fuzzy_type], fuzzy_b[fuzzy_type]):
