@@ -38,22 +38,6 @@ keys from both datasets, with tunable heuristics.
 #             if you match B to E,
 #             you should resist matching A to F or C to D.
 #         but how do you do that!?
-#
-#   * does key_reuse_penalty_factor even make sense?
-#       * it was added back in the bad old days, before I really understood rounds.
-#
-#         back then I thought redundant keys were uninteresting.  initially
-#         correlate didn't even understand rounds; if you mapped the same key to the
-#         same value twice, it only retained one mapping (the one with the higher
-#         weight).  later I added rounds but they didn't seem to add much signal.
-#         it wasn't until the realization that key->value in round 0 and key->value
-#         in round 1 were conceptually *two different keys* that I really understood
-#         how redundant mappings of the same key to the same value should work.  and
-#         once rounds maintained distinct counts of keys / scores for the scoring
-#         formula, they became way more informative to the final score.  so I think
-#         key_reuse_penalty_factor is dumb and useless and I want to get rid of it
-#         and simplify my code.  if you think key_reuse_penalty_factor is useful,
-#         please contact me and tell me why!
 
 import builtins
 from collections import defaultdict
@@ -593,7 +577,7 @@ class Correlator:
         def __setitem__(self, key, value):
             self.set(key, value)
 
-        def _precompute_streamlined_data(self, other, key_reuse_penalty_factor):
+        def _precompute_streamlined_data(self, other):
             empty_tuple = ()
 
             # computes the cached data for the actual correlate
@@ -606,7 +590,7 @@ class Correlator:
             # if no keys, exact_rounds[index] = [] # empty list
             exact_rounds = []
 
-            # fuzzy_types[index][type] = [(key, weight, round#, key_reuse_penalty), ...]
+            # fuzzy_types[index][type] = [(key, weight, round#), ...]
             # all rounds are merged together
             # if no keys, fuzzy_types[index][type] won't be set
             fuzzy_types = []
@@ -644,8 +628,6 @@ class Correlator:
                 types = {}
                 fuzzy_types.append(types)
 
-                key_penalties = [ key_reuse_penalty_factor ** round for round in range(self._max_round) ]
-
                 for t, k in type_to_key.items():
                     if t is None:
                         continue
@@ -660,7 +642,7 @@ class Correlator:
                         assert weights
                         total_key_counter += len(weights)
                         for round, weight in enumerate(weights):
-                            keys.append( (key, weight, round, key_penalties[round]) )
+                            keys.append( (key, weight, round) )
 
                 total_keys.append(total_key_counter)
 
@@ -741,7 +723,6 @@ class Correlator:
             ranking=BestRanking,
             ranking_bonus=0,
             ranking_factor=0,
-            key_reuse_penalty_factor=1,
             reuse_a=False,
             reuse_b=False,
             ):
@@ -752,7 +733,6 @@ class Correlator:
         # self.print(f"    {ranking=}") #debug
         # self.print(f"    {ranking_bonus=}") #debug
         # self.print(f"    {ranking_factor=}") #debug
-        # self.print(f"    {key_reuse_penalty_factor=}") #debug
         # self.print(f"    {reuse_a=}") #debug
         # self.print(f"    {reuse_b=}") #debug
         # self.print(f"    )") #debug
@@ -769,8 +749,8 @@ class Correlator:
         empty_set = set()
         empty_dict = {}
 
-        all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = a._precompute_streamlined_data(b, key_reuse_penalty_factor)
-        all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = b._precompute_streamlined_data(a, key_reuse_penalty_factor)
+        all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = a._precompute_streamlined_data(b)
+        all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = b._precompute_streamlined_data(a)
 
         # dump datasets
         # for dataset, exact_rounds, fuzzy_types in ( #debug
@@ -802,7 +782,7 @@ class Correlator:
                         # self.print(f"            round {round_number}") #debug
                         # printed = False #debug
                         # for t in fuzzy_keys: #debug
-                            # key, weight, round, penalty = t #debug
+                            # key, weight, round = t #debug
                             # if round == round_number: #debug
                                 # printed = True #debug
                                 # print_key_and_weight(key, weight) #debug
@@ -894,7 +874,7 @@ class Correlator:
         #    -> cumulative score for all fuzzy matches involving this fuzzy key in this round
         #
         # a "fuzzy_round_tuple" is
-        #    (key, weight, round_number, round_key_reuse_penalty_factor)
+        #    (key, weight, round_number)
         #
         # this is what's stored in the precomputed data for matching fuzzy keys.
         # and, since we have it handy and it's immutable, it is itself used as
@@ -909,16 +889,16 @@ class Correlator:
         # specifically, second_pass is a sequence of these:
         #    ( (index_a, index_b), exact_scores, cumulative_exact_score, fuzzy_semifinal_matches )
         # exact_scores is an unsorted list of the scores from all exact matches,
-        #    with weights, key_reuse_penalty_factor, and cumulative_a * cumulative_b factored in.
+        #    with weights and cumulative_a * cumulative_b factored in.
         # cumulative_exact_score is the sum of the raw exact scores
-        #    (without weights, key_reuse_penalty_factor, cumulative_a * cumulative_b).
+        #    (without weights or cumulative_a * cumulative_b).
         #    it's used for computing score_ratio_bonus.
         #
         # fuzzy_semifinal_matches is an unsorted list of partially-computed fuzzy matches.
         # it's a series of tuples like this:
-        #    (fuzzy_score, semi_final_score, fuzzy_round_tuple_a, fuzzy_round_tuple_b)
+        #    (fuzzy_score, weighted_score, fuzzy_round_tuple_a, fuzzy_round_tuple_b)
         # fuzzy_score is the raw fuzzy score from this match.
-        # semi_final_score is fuzzy_score cubed with weights and round_key_reuse_penalty_factor applied.
+        # weighted_score is fuzzy_score cubed with weights applied.
         #    it still needs to be divided by the product of the cumuative fuzzy scores of the two fuzzy keys;
         #    that's what this second pass is for.
         #
@@ -1023,7 +1003,6 @@ class Correlator:
                 except TypeError:
                     pass
 
-                round_factor = key_reuse_penalty_factor ** (i*2)
                 cumulative_possible_exact_score += len(keys_intersection) * 2
 
                 # sorted_a = "{" + ", ".join(list(sorted(keys_a))) + "}" #debug
@@ -1039,8 +1018,8 @@ class Correlator:
                 for key in keys_intersection:
                     weight_a, len_weights_a = weights_a[key]
                     weight_b, len_weights_b = weights_b[key]
-                    score = ((weight_a * weight_b) * round_factor) / (len_weights_a * len_weights_b)
-                    # match_print(indexes, f"        score for matched key {key!r} =  {score} (({weight_a=} * {weight_b=}) * {round_factor=}) / ({len_weights_a=} * {len_weights_b=})") #debug
+                    score = (weight_a * weight_b) / (len_weights_a * len_weights_b)
+                    # match_print(indexes, f"        score for matched key {key!r} =  {score} ({weight_a=} * {weight_b=}) / ({len_weights_a=} * {len_weights_b=})") #debug
                     if score:
                         scored = True
                         exact_scores.append(score)
@@ -1083,8 +1062,8 @@ class Correlator:
 
                 for pair in itertools.product(fuzzy_a[fuzzy_type], fuzzy_b[fuzzy_type]):
                     tuple_a, tuple_b = pair
-                    key_a, weight_a, round_a, key_reuse_penalty_factor_a = tuple_a
-                    key_b, weight_b, round_b, key_reuse_penalty_factor_b = tuple_b
+                    key_a, weight_a, round_a = tuple_a
+                    key_b, weight_b, round_b = tuple_b
                     fuzzy_score = fuzzy_score_cache[key_a][key_b]
                     # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
 
@@ -1094,16 +1073,14 @@ class Correlator:
                     fuzzy_score_cubed = fuzzy_score ** 3
 
                     weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
-                    # we don't compute semi_final_score using weighted_score because I'm trying to preserve precision
-                    semi_final_score = (weight_a * weight_b) * (fuzzy_score_cubed * (key_reuse_penalty_factor_a * key_reuse_penalty_factor_b))
 
                     lowest_round = min(round_a, round_b)
                     highest_round = max(round_a, round_b)
                     sort_by = (fuzzy_score, -lowest_round, -highest_round)
 
-                    # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) key_reuse=({key_reuse_penalty_factor_a}, {key_reuse_penalty_factor_b}) {weighted_score=} {semi_final_score=}") #debug
+                    # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) {weighted_score=}") #debug
                     item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
-                    item.scores = (fuzzy_score, weighted_score, semi_final_score)
+                    item.scores = (fuzzy_score, weighted_score)
                     item.sort_by = sort_by
                     fuzzy_boiler.matches.append(item)
                 fuzzy_boiler.matches.sort(key=lambda x : x.sort_by)
@@ -1117,8 +1094,8 @@ class Correlator:
                     fuzzy_score, tuple_a, tuple_b = item
                     fuzzy_key_cumulative_score_a[tuple_a] += fuzzy_score
                     fuzzy_key_cumulative_score_b[tuple_b] += fuzzy_score
-                    fuzzy_score, weighted_score, semi_final_score = item.scores
-                    fuzzy_semifinal_matches.append( (fuzzy_score, semi_final_score, tuple_a, tuple_b) )
+                    fuzzy_score, weighted_score = item.scores
+                    fuzzy_semifinal_matches.append( (fuzzy_score, weighted_score, tuple_a, tuple_b) )
 
             if not fuzzy_semifinal_matches:
                 # match_print(indexes, f"    no fuzzy scores.  add to third pass.") #debug
@@ -1149,16 +1126,16 @@ class Correlator:
             # match_print(indexes) #debug
 
             for t2 in fuzzy_semifinal_matches:
-                fuzzy_score, semi_final_score, tuple_a, tuple_b = t2
+                fuzzy_score, weighted_score, tuple_a, tuple_b = t2
                 # key_a = tuple_a[0] #debug
                 # key_b = tuple_b[0] #debug
                 # match_print(indexes, f"    {key_a=}") #debug
                 # match_print(indexes, f"    {key_b=}") #debug
                 hits_in_a = fuzzy_key_cumulative_score_a[tuple_a]
                 hits_in_b = fuzzy_key_cumulative_score_b[tuple_b]
-                score = semi_final_score / (hits_in_a * hits_in_b)
+                score = weighted_score / (hits_in_a * hits_in_b)
                 cumulative_score += fuzzy_score * 2
-                # match_print(indexes, f"    {score=} = {semi_final_score=} / ({hits_in_a=} * {hits_in_b=})") #debug
+                # match_print(indexes, f"    {score=} = {weighted_score=} / ({hits_in_a=} * {hits_in_b=})") #debug
                 # match_print(indexes) #debug
                 exact_scores.append(score)
             exact_scores.sort()

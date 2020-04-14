@@ -136,12 +136,12 @@ def fuzzy_rounds_stress_test(verbose):
     for weight in (4, 1, 3, 5, 2, 1):
         b.set(kb1, vb, weight=weight)
 
-    result = c.correlate(key_reuse_penalty_factor=0.5)
+    result = c.correlate()
     if verbose:
         pprint("matches", result.matches)
     assert len(result.matches) == 1
     score = result.matches[0].score
-    expected_score = 6.884943181818182
+    expected_score = 10.181818181818183
     assert score == expected_score, f"{score=} {expected_score=}"
 
 

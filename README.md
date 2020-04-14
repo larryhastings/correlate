@@ -1439,6 +1439,24 @@ smallest group of connected matches with the same score,
 and only recursively check each of those,
 rather than all possibly-connected matches with the same score.
 
+Removed `key_reuse_penalty_factor`.
+In the early days of **correlate**, I thought redundant keys were uninteresting.
+Initially **correlate** didn't even understand rounds; if you mapped the same
+key to the same value twice, it only retained one mapping (the one with the
+higher weight).  Later I added rounds, but they didn't seem to add much signal.
+So I added `key_reuse_penalty_factor`, so you could turn it down, in case it
+was adding more noise than signal.
+It wasn't until the realization that `key->value` in round 0 and `key->value`
+in round 1 were conceptually *two different keys* that I really understood
+how redundant mappings of the same key to the same value should work.  And
+once rounds maintained distinct counts of `keys / scores` for the scoring
+formula, redundant keys in different rounds became *way* more informative
+to the final score.   I now think `key_reuse_penalty_factor` is dumb and worse
+than useless and I've removed it.  If you think `key_reuse_penalty_factor` is useful,
+please contact me and tell me why!  Or, quietly just pre-multiply it into
+your weights.
+
+
 The cumulative effect: a speedup of up to 30% in fuzzy match boiling,
 and up to 5% on YTJD tests using a lot of fuzzy keys.  Match boiling got
 slightly faster too.
