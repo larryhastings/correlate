@@ -38,17 +38,26 @@ except IndexError:
 
 c = correlate.Correlator()
 
-def filenames_to_keys(filenames, dataset):
+def _find_filenames(filenames):
+    output_filenames = []
     for filename in filenames:
         if os.path.isdir(filename):
             for dirpath, dirnames, filenames in os.walk(filename):
                 if dirpath.startswith(("./", ".\\")):
                     dirpath = dirpath[2:]
                 dirnames.sort()
-                filenames.sort()
-                filenames_to_keys((os.path.join(dirpath, filename) for filename in filenames), dataset)
+                output_filenames.extend(_find_filenames((os.path.join(dirpath, filename) for filename in filenames)))
             continue
+        output_filenames.append(filename)
 
+    output_filenames.sort()
+    return output_filenames
+
+# sort the filenames before setting them,
+# just to try and preserve some presentation for the user
+def filenames_to_keys(filenames, dataset):
+    filenames = _find_filenames(filenames)
+    for filename in filenames:
         basename = filename.rpartition(".")[0]
         basename = basename.replace("/", " ")
         basename = basename.replace("\\", " ") # hello, windows users!
@@ -89,20 +98,24 @@ for match in result.matches:
 
 
 print(f"# {len(result.matches)} matches")
-print(f"# {len(result.unmatched_a)} unmatched source filenames")
-print(f"# {len(result.unmatched_b)} unmatched files we can't rename")
+print(f"# {len(result.unmatched_b)} unmatched source files")
+print(f"# {len(result.unmatched_a)} unmatched files we can't rename")
 print(f"# {len(correct_names)} files that already have the correct name")
 print()
 
 if not renames:
     print("# nothing to do!")
 
+def interesting_dir(dir):
+    return dir and (dir not in (".", ".."))
+
 for src, dst in renames:
     old_dir = os.path.dirname(src)
-    old_dirs_to_rmdir.add(old_dir)
+    if interesting_dir(old_dir):
+        old_dirs_to_rmdir.add(old_dir)
 
     new_dir = os.path.dirname(dst)
-    if new_dir not in new_dirs_created:
+    if interesting_dir(new_dir) and new_dir not in new_dirs_created:
         new_dirs_created.add(new_dir)
         print("mkdir", shlex.quote(new_dir))
 

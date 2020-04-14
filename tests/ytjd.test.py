@@ -138,6 +138,7 @@ def main(argv):
     if start is None:
         start = 0
 
+    failures = 0
     for i, flags in enumerate(tests, 1):
         if not (start <= i <= end):
             continue
@@ -147,8 +148,14 @@ def main(argv):
             print()
         t = YTJDTest()
         t.__dict__.update(flags)
-        t(verbose)
-    print("All tests passed.")
+        correct, incorrect = t(verbose)
+        if incorrect:
+            print(f"Test #{i} had {correct} correct matches and {incorrect} matching failures!")
+            failures += 1
+    if failures:
+        print(f"{failures} tests out of {len(tests)} failed.")
+    else:
+        print("All tests passed.")
     return 0
 
 class YTJDTest:
@@ -215,7 +222,8 @@ class YTJDTest:
             print(f"elapsed time: {end - start} seconds")
             print()
 
-        return_value = 0
+        correct = 0
+        incorrect = 0
 
         prefix="    "
 
@@ -231,7 +239,9 @@ class YTJDTest:
             index_a = self.c.dataset_a.lines.index(match.value_a)
             index_b = self.c.dataset_b.lines.index(match.value_b)
             correct_match = correct_matches[index_a]
-            if correct_match != index_b:
+            if correct_match == index_b:
+                correct += 1
+            else:
                 print("mismatch!")
                 print(f"{prefix}{match.score}")
                 print(f"{prefix}this value in a:")
@@ -244,7 +254,7 @@ class YTJDTest:
                 else:
                     print(f"{prefix}but shouldn't have matched anything!")
                 print()
-                return_value += 1
+                incorrect += 1
 
         # print("UNMATCHED B", result.unmatched_b)
         for unmatched in result.unmatched_b:
@@ -258,9 +268,9 @@ class YTJDTest:
                 print_ytjd(unmatched, prefix=prefix)
                 print(f"{prefix}but instead the value in b didn't match anything.")
                 print()
-                return_value += 1
+                incorrect += 1
 
-        return return_value
+        return correct, incorrect
 
     def dataset_database(self, dataset):
         dataset.lines = database_lines

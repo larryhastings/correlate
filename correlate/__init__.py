@@ -17,16 +17,17 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
-#   * retool streamlined data for new fuzzy match boiler
-#
-#   * doc: match boiler is gale-shipley with operations reordered/unrolled
-#
 #   * match_boiler:
 #       * when processing connected_items, pick apart into separate connected blobs where possible
 #           * if there are 5 matches in a row with the same score, and there are
 #             two groups inside A-B-C and D-E connected within themselves,
 #             it's cheaper to just process D-E
 #               * you'll have to recurse on A-B-C too but you do that inside D-E
+#
+#   * doc: match boiler is gale-shipley with operations reordered/unrolled
+#
+#   * doc: new fuzzy boiler approach
+#       * move streamlined below rounds, because rounds are mostly conceptual at this point
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
@@ -72,10 +73,10 @@ import pprint
 import string
 import time
 
-__version__ = "0.5.2"
+__version__ = "0.6"
 
 
-punctuation = "?!@#$%^&*:,<>{}[]\\|_-"
+punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
 remove_punctuation = str.maketrans({x: " " for x in punctuation})
 
 def _strip_leading_zeroes(s):
@@ -98,7 +99,7 @@ class FuzzyKey:
 
     def compare(self, other):
         """
-        FuzzyKey.compare() comapres self against another
+        FuzzyKey.compare() compares self against another
         value.  It should return a number in the range
         (0.0, 1.0).  (That is, 0.0 <= return_value <= 1.0.)
         The number returned indicates how good a match the
@@ -121,6 +122,79 @@ def item_key_score(item):
 
 def sort_matches(matches):
     matches.sort(key=item_key_score)
+
+def grouper(matches):
+    """
+    Splits matches into connected subgroups.
+
+    In short:
+      * if match1.value_a == match2.value_a,
+        then they must be in the same "group" G.
+        (Also true if they both have the same value_b.)
+      * if match1.value_a != matchx.value_a for
+        every matchx in group G, and similarly for value_b,
+        then match1 must not be in group G.
+
+    matches is an iterable of CorrelateMatch objects.
+    grouper iterates over this list, storing them
+    into a series of sub-lists where every match object
+    has value_a or value_b in common with at least
+    one other match object in that sub-list.
+
+    Returns a list of these sub-lists, sorted by size,
+    with the smallest sub-lists first.
+
+    Sub-lists are guaranteed to be len() 1 or greater.
+    """
+    keys_a = {}
+    keys_b = {}
+
+    groups = []
+
+    # i = lambda o: hex(id(o))[2:] #debug
+
+    # print() #debug2
+    # print("grouper input:") #debug2
+    # pprint.pprint(matches) #debug2
+    # print() #debug2
+
+    for match in matches:
+        # print("::", match) #debug2
+        group_a = keys_a.get(match.value_a)
+        group_b = keys_b.get(match.value_b)
+        if group_a == group_b == None:
+            l = []
+            groups.append(l)
+            # print(f"  new group {i(l)}") #debug2
+        elif not (group_a and group_b) or (group_a == group_b):
+            assert (group_a and not group_b) or (group_b and not group_a) or (group_a == group_b)
+            l = group_a or group_b
+            # print(f"     add to {i(l)}") #debug2
+        else:
+            # merge smaller into bigger
+            if len(group_a) < len(group_b):
+                smaller = group_a
+                bigger = group_b
+            else:
+                bigger = group_a
+                smaller = group_b
+            # print("    merge smaller into bigger, add to bigger:") #debug2
+            # print(f"         bigger {i(bigger)}") #debug2
+            # print(f"        smaller {i(smaller)}") #debug2
+            bigger.extend(smaller)
+            for m in smaller:
+                keys_a[m.value_a] = keys_b[m.value_b] = bigger
+            l = bigger
+            groups.remove(smaller)
+        keys_a[match.value_a] = keys_b[match.value_b] = l
+        l.append(match)
+
+    groups.sort(key=len)
+    # print() #debug2
+    # print("grouper result:") #debug2
+    # pprint.pprint(groups) #debug2
+    # print() #debug2
+    return groups
 
 
 class MatchBoiler:
@@ -160,15 +234,18 @@ class MatchBoiler:
     are permitted to repeat.  Similarly for reuse_b and value_b.
     """
 
-    def __init__(self, *, matches = None, reuse_a=False, reuse_b=False, indent=""):
+    def __init__(self, *, matches = None, reuse_a=False, reuse_b=False,
+        # name="'match boiler'", indent="", #debug
+        ):
         self.reuse_a = reuse_a
         self.reuse_b = reuse_b
         self.seen_a = set()
         self.seen_b = set()
-        self.indent = indent
         if matches is None:
             matches = []
         self.matches = matches
+        # self.name = name #debug
+        # self.indent = indent #debug
         # self.print = print #debug
 
     def copy(self):
@@ -176,14 +253,15 @@ class MatchBoiler:
         copy.seen_a = self.seen_a.copy()
         copy.seen_b = self.seen_b.copy()
         copy.matches = self.matches.copy()
-        copy.indent = self.indent
+        # copy.name = self.name #debug
+        # copy.indent = self.indent #debug
         # copy.print = self.print #debug
         return copy
 
     def _assert_in_ascending_sorted_order(self):
         previous_score = -math.inf
         for i, item in enumerate(self.matches):
-            assert previous_score <= item.score, f"match_boiler.matches not in ascending sorted order! {previous_score=} > matches[{i}].score {item.score}"
+            assert previous_score <= item.score, f"{self.name}.matches not in ascending sorted order! {previous_score=} > matches[{i}].score {item.score}"
         return True
 
     def __call__(self):
@@ -216,7 +294,7 @@ class MatchBoiler:
 
         results = []
 
-        # self.print(f"{self.indent}match boiler [{hex(id(self))[2:]}]: begin boiling!") #debug
+        # self.print(f"{self.indent}{self.name} [{hex(id(self))[2:]}]: begin boiling!") #debug
         # self.print(f"{self.indent}    {len(self.matches)} items:") #debug
         # for item in self.matches: #debug
             # self.print(f"{self.indent}        {item}") #debug
@@ -234,9 +312,22 @@ class MatchBoiler:
                 # self.print(f"{self.indent}        already used value_a or value_b, discarding.") #debug
                 continue
 
-            # now consume all other items from matches that have the same score.
-            # put all these items in
+            # the general case is: the top item's score is unique.
+            # in that case, keep it, and loop immediately.
             top_score = top_item.score
+            if (not matches) or (matches[-1].score != top_score):
+                # self.print(f"{self.indent}        no other items with a matching score!  keep it!") #debug
+                results.append(top_item)
+                seen_a.add(top_item.value_a)
+                seen_b.add(top_item.value_b)
+                continue
+
+            # okay, at least 2 of the top items in matches have the same score.
+            # from here to the end of the loop is rarely-executed code,
+            # so it doesn't need to be as performant. it's more important that
+            # it be correct and readable.
+
+            # consume all other items from matches that have the same score.
             matching_items = [top_item]
             while matches:
                 if matches[-1].score != top_score:
@@ -250,49 +341,28 @@ class MatchBoiler:
                     continue
                 matching_items.append(matching_item)
 
-            # if the top item's score was unique
-            # (which is nearly always true),
-            # keep it and proceed as normal.
-            if len(matching_items) == 1:
-                # self.print(f"{self.indent}        no other items with a matching score!  keep it!") #debug
-                results.append(top_item)
-                seen_a.add(top_item.value_a)
-                seen_b.add(top_item.value_b)
-                continue
-
             # preserve order of matching items!
             matching_items = list(reversed(matching_items))
-            # okay, we really do have multiple items with the same score.
-            # count how many times each value_a and value_b appear in the list.
-            # self.print(f"{self.indent}        {len(matching_items)} matching items.  let's keep any that are disjoint.") #debug
-            a = defaultdict(int)
-            b = defaultdict(int)
-            for item in matching_items:
-                a[item.value_a] += 1
-                b[item.value_b] += 1
 
-            # filter "matching_scores"
+            groups = grouper(matching_items)
+
             # for disjoint items (items whose value_a and value_b
             # only appear once in matching_scores), immediately keep them.
-            # for connected items (items which have a value_a or a
-            # value_b that appears in at least one other item in matching_scores)
-            # store them in "connected_items".
-            connected_items = []
-            re_sort = False
-            for item in matching_items:
-                if a[item.value_a] == b[item.value_b] == 1:
-                    # self.print(f"{self.indent}        keeping isolated {item=}") #debug
+            for group in groups:
+                if len(group) == 1:
+                    item = group[0]
                     results.append(item)
                     seen_a.add(item.value_a)
                     seen_b.add(item.value_b)
-                else:
-                    connected_items.append(item)
-
-            if not connected_items:
-                # self.print(f"{self.indent}        all items with matching scores were isolated!  no problemo!") #debug
+                    continue
+                break
+            else:
                 continue
 
-            # okay.  we need to recursively run experiments.
+            # okay.  "group" now contains the smallest connected
+            # list of matches with identical scores of length 2 or more.
+            #
+            # we need to recursively run experiments.
             # for each item in connected_items, try keeping it,
             # and computing what score we'd get from the rest
             # of the "scores" list.  then for each of these
@@ -304,23 +374,42 @@ class MatchBoiler:
             #    * storing their results in order
             # the goal being: if the scores are all equivalent,
             # consume the first one.
-            assert len(connected_items) >= 2
-            # self.print(f"{self.indent}        {len(connected_items)} connected items remain.  try each experimentally, recursively.") #debug
+            #
+            # why is it best that this be the smallest group of
+            # 2 or more?  because recursing on the smallest group
+            # is cheapest.  let's say there are 50 items left
+            # in matches.  and at the top are 5 items with the same
+            # score.  one is a group of 2, the other is a group of 3.
+            # the number of operations we'll perform by looping and
+            # recursing is, roughly, NxM, where N is len(group)
+            # and M is len(matches - group).  so which one is cheaper:
+            #   2 x 48
+            #   3 x 47
+            # obviously the first one!
+
+            assert len(group) >= 2
+            # self.print(f"{self.indent}        recursing on smallest connected group, length {len(group)}.") #debug
             all_experiment_results = []
-            for i in range(len(connected_items) - 1, -1, -1):
+
+            for i in range(len(group) - 1, -1, -1):
                 experiment = self.copy()
-                experiment.indent += "        "
-                matches = connected_items.copy()
+                # experiment.indent += "        " #debug
+                matches = group.copy()
                 item = matches.pop(i)
                 experiment.matches.extend(matches)
-                if not reuse_a:
-                    experiment.matches = [match for match in experiment.matches if match.value_a != item.value_a]
-                if not reuse_b:
-                    experiment.matches = [match for match in experiment.matches if match.value_b != item.value_b]
+
+                e_seen_a = experiment.seen_a
+                e_seen_b = experiment.seen_b
+                e_seen_a.add(item.value_a)
+                e_seen_b.add(item.value_b)
+                if not (reuse_a or reuse_b):
+                    experiment.matches = [match for match in experiment.matches if ((match.value_a not in e_seen_a) and (match.value_b not in e_seen_b))]
+                elif not reuse_a:
+                    experiment.matches = [match for match in experiment.matches if match.value_a not in e_seen_a]
+                elif not reuse_b:
+                    experiment.matches = [match for match in experiment.matches if match.value_b not in e_seen_b]
                 # self.print(f"{self.indent}        experiment #{len(connected_items) - i}: keep {item}") #debug
 
-                experiment.seen_a.add(item.value_a)
-                experiment.seen_b.add(item.value_b)
                 experiment_results, seen_a, seen_b = experiment()
 
                 experiment_score = item.score + sum((o.score for o in experiment_results))
@@ -601,6 +690,8 @@ class Correlator:
             ]
         self.print = print
         self._fuzzy_score_cache = defaultdict(defaultdict_none)
+        # self._match_boiler_times = [] #debug
+        # self._fuzzy_boiler_times = [] #debug
 
     def _validate(self):
         # self.print(f"validating {self}") #debug
@@ -991,8 +1082,10 @@ class Correlator:
 
             for fuzzy_type in fuzzy_types_in_common:
 
-                # start = time.perf_counter()
+                # start = time.perf_counter() #debug
+
                 fuzzy_boiler = MatchBoiler()
+                # fuzzy_boiler.name = "'fuzzy boiler'" #debug
                 # fuzzy_boiler.print = self.print #debug
 
                 for pair in itertools.product(fuzzy_a[fuzzy_type], fuzzy_b[fuzzy_type]):
@@ -1021,13 +1114,11 @@ class Correlator:
                     item.sort_by = sort_by
                     fuzzy_boiler.matches.append(item)
                 fuzzy_boiler.matches.sort(key=lambda x : x.sort_by)
-                # print(">> fuzzy_boiler.matches ")
-                # pprint.pprint(list(zip((x, x.sort_by) for x in fuzzy_boiler.matches)))
 
                 fuzzy_matches = fuzzy_boiler()[0]
 
-                # end = time.perf_counter()
-                # print(f">> fuzzy boiling time {end - start}")
+                # end = time.perf_counter() #debug
+                # self._fuzzy_boiler_times.append(end - start) #debug
 
                 for item in fuzzy_matches:
                     fuzzy_score, tuple_a, tuple_b = item
@@ -1153,25 +1244,29 @@ class Correlator:
             # s = "\n".join(l) #debug
             # self.print(s) #debug
 
-        # self.print("[final pass (choose ranking)]") #debug
+        # self.print("[fourth pass (choose ranking)]") #debug
         results = []
 
         # fourth pass!
         for correlations in fourth_pass:
-            boiler = MatchBoiler(reuse_a=reuse_a, reuse_b=reuse_b)
-            # boiler.print = self.print #debug
             matches = correlations.matches
             sort_matches(matches)
-            boiler.matches = matches
-            matches, seen_a, seen_b = boiler()
-
-            cumulative_score = 0.0
+            # throw away matches with score < minimum_score
             for i, item in enumerate(matches):
-                score = item.score
-                cumulative_score += score
-                if score <= minimum_score:
-                    matches = matches[:i]
+                if item.score > minimum_score:
+                    matches = matches[i:]
                     break
+            else:
+                matches = []
+
+            # start = time.perf_counter() #debug
+            boiler = MatchBoiler(matches=matches, reuse_a=reuse_a, reuse_b=reuse_b)
+            # boiler.print = self.print #debug
+            matches, seen_a, seen_b = boiler()
+            # end = time.perf_counter() #debug
+            # self._match_boiler_times.append(end - start) #debug
+
+            cumulative_score = sum(item.score for item in matches)
 
             if matches:
                 # clipped_score_integer, dot, clipped_score_fraction = str(cumulative_score).partition(".") #debug
@@ -1197,5 +1292,13 @@ class Correlator:
         for match in matches:
             match.value_a = a.values[match.value_a]
             match.value_b = b.values[match.value_b]
+
+        # for name, l in ( #debug
+                # ("match boiler", self._match_boiler_times), #debug
+                # ("fuzzy boiler", self._fuzzy_boiler_times), #debug
+            # ): #debug
+            # l.sort() #debug
+            # total = sum(l) #debug
+            # print(f">> {name} cumulative time: {total}") #debug
 
         return CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score)
