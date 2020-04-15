@@ -17,10 +17,35 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
+#   * match boiler
+#       * maintain the order of match results when recursing
+#         that will mean that the order of matches returned will
+#         be identical to the original matches coming in, but filtered
+#           * idea: jot down indices of all members that you keep in a set.
+#             then at the last stage extend with [x for i, x in enumerate(result) if i in jotted_down_set]
+#       * note that you don't need to append the other members of the group
+#         when recursing! the *point* is that they're "connected".  which means
+#         they're in seen_a or seen_b.  which means the other connected items
+#         will get removed.  duh!
+#       * but still, make sure you add all the isolated_item.value_a and value_b to
+#         seen_a and seen_b, and filter them out, before recursing.
+#       * add test exercising the bug based on grouper
+#             if you return groups of length [1, 2, 3, 4]
+#             we were recursing on all the members of the group of length 2
+#             AND THROWING AWAY THE MEMBERS OF GROUPS LENGTHS 3 AND 4
+#             I mean, it should be fixed now.  but that's what tests are for!
+#
 #   * doc: match boiler is gale-shipley with operations reordered/unrolled
+#       * MatchBoiler can't return unused, because it may not see all items
+#           * items that only match with score 0
+#           * items that have no keys in common with any other item and get discarded immediately
 #
 #   * doc: new fuzzy boiler approach
 #       * move streamlined below rounds, because rounds are mostly conceptual at this point
+#
+#   * doc
+#       * exact keys go into multiple rounds if == says they're different
+#       * fuzzy keys only go into multiple rounds iff "is" says they're different
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
@@ -50,7 +75,7 @@ import pprint
 import string
 import time
 
-__version__ = "0.6"
+__version__ = "0.6.1"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -119,7 +144,7 @@ def grouper(matches):
     one other match object in that sub-list.
 
     Returns a list of these sub-lists, sorted by size,
-    with the smallest sub-lists first.
+    with the largest sub-lists first.
 
     Sub-lists are guaranteed to be len() 1 or greater.
     """
@@ -143,12 +168,13 @@ def grouper(matches):
             l = []
             groups.append(l)
             # print(f"  new group {i(l)}") #debug2
-        elif not (group_a and group_b) or (group_a == group_b):
+        elif (group_a == group_b) or not (group_a and group_b):
             assert (group_a and not group_b) or (group_b and not group_a) or (group_a == group_b)
             l = group_a or group_b
             # print(f"     add to {i(l)}") #debug2
         else:
             # merge smaller into bigger
+            # that's cheaper, because we need to walk the group we discard
             if len(group_a) < len(group_b):
                 smaller = group_a
                 bigger = group_b
@@ -166,7 +192,7 @@ def grouper(matches):
         keys_a[match.value_a] = keys_b[match.value_b] = l
         l.append(match)
 
-    groups.sort(key=len)
+    groups.sort(key=len, reverse=True)
     # print() #debug2
     # print("grouper result:") #debug2
     # pprint.pprint(groups) #debug2
@@ -325,7 +351,11 @@ class MatchBoiler:
 
             # for disjoint items (items whose value_a and value_b
             # only appear once in matching_scores), immediately keep them.
-            for group in groups:
+            # if we only ever found groups of length 1, the for/else means
+            # we'll continue the outer loop and continue iterating through matches.
+            # if we find a group of length 2 or greater we break.
+            while groups:
+                group = groups.pop()
                 if len(group) == 1:
                     item = group[0]
                     results.append(item)
@@ -338,40 +368,45 @@ class MatchBoiler:
 
             # okay.  "group" now contains the smallest connected
             # list of matches with identical scores of length 2 or more.
+            # and "groups" contains all other groups of size 2 or more.
             #
             # we need to recursively run experiments.
-            # for each item in connected_items, try keeping it,
-            # and computing what score we'd get from the rest
-            # of the "scores" list.  then for each of these
-            # experiments, compute the cumulative score.  then
-            # keep the experiment with the greatest total score.
+            # for each item in the group, try keeping it,
+            # recursively process the rest of the matches,
+            # and compute the resulting cumulative score.
+            # then keep the experiment with the greatest cumulative score.
             #
             # this code preserves:
             #    * processing connected items in order
             #    * storing their results in order
             # the goal being: if the scores are all equivalent,
-            # consume the first one.
+            # keep the first one.
             #
             # why is it best that this be the smallest group of
             # 2 or more?  because recursing on the smallest group
             # is cheapest.  let's say there are 50 items left
-            # in matches.  and at the top are 5 items with the same
-            # score.  one is a group of 2, the other is a group of 3.
+            # in matches.  at the top are 6 items with the same
+            # score.  one is a group of 2, the other is a group of 4.
             # the number of operations we'll perform by looping and
             # recursing is, roughly, NxM, where N is len(group)
             # and M is len(matches - group).  so which one is cheaper:
             #   2 x 48
-            #   3 x 47
+            #   4 x 46
             # obviously the first one!
 
             assert len(group) >= 2
+
+            merged_groups = list(group)
+            for group in groups:
+                merged_groups.extend(group)
+
             # self.print(f"{self.indent}        recursing on smallest connected group, length {len(group)}.") #debug
             all_experiment_results = []
 
             for i in range(len(group) - 1, -1, -1):
                 experiment = self.copy()
                 # experiment.indent += "        " #debug
-                matches = group.copy()
+                matches = merged_groups.copy()
                 item = matches.pop(i)
                 experiment.matches.extend(matches)
 

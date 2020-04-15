@@ -1427,6 +1427,15 @@ thing isn't an actual problem.)
 
 ## Version History
 
+**0.6.1**
+
+Bugfix for major but rare bug: if there are multiple
+groups of `len() > 1` of "connected" match objects with
+the same score, the match boiler would only keep the
+smallest one--the rest were accidentally discarded.
+(`match_boiler_2_test()` was added to `tests/regression_test.py`
+to check for this.)
+
 **0.6**
 
 Big performance boost in "fuzzy boiling"!  Clever sorting of fuzzy matches,

@@ -10,6 +10,7 @@
 
 import itertools
 import os.path
+import random
 import sys
 import traceback
 
@@ -224,22 +225,23 @@ def fuzzy_matches_stress_test(verbose):
         assert score == correct_score, f"{score=} != {correct_score=}, {scores=}"
 
 
-def match_boiler_test(verbose):
-    def test(matches, verbose):
-        if verbose:
-            pprint("matches", matches)
-        boiler = MatchBoiler()
-        boiler.matches = list(matches)
-        sort_matches(boiler.matches)
-        result, seen_a, seen_b = boiler()
-        if verbose:
-            pprint("result", result)
-        cumulative_score = sum((item.score for item in result))
-        if verbose:
-            print(f"{cumulative_score=}")
-            print()
-        return cumulative_score, result, seen_a, seen_b
+def boiler_test_driver(matches, verbose):
+    if verbose:
+        pprint("matches", matches)
+    boiler = MatchBoiler()
+    boiler.matches = list(matches)
+    sort_matches(boiler.matches)
+    result, seen_a, seen_b = boiler()
+    if verbose:
+        pprint("result", result)
+    cumulative_score = sum((item.score for item in result))
+    if verbose:
+        print(f"{cumulative_score=}")
+        print()
+    return cumulative_score, result, seen_a, seen_b
 
+
+def match_boiler_test(verbose):
     def permuted_matches_test(name, matches, verbose):
         results = []
         _verbose = verbose
@@ -247,7 +249,7 @@ def match_boiler_test(verbose):
         for i, permutation in enumerate(permutations, 1):
             if verbose:
                 print(f"{name} test {i}/{len(permutations)}")
-            result = test(permutation, _verbose)
+            result = boiler_test_driver(permutation, _verbose)
             results.append(result)
             if _verbose:
                 _verbose -= 1
@@ -256,7 +258,6 @@ def match_boiler_test(verbose):
         assert all(result == first_result for result in results), f"all results should be the same!  {results=}"
         if verbose:
             print()
-
 
     permuted_matches_test("three items",
         [
@@ -275,6 +276,43 @@ def match_boiler_test(verbose):
             CorrelatorMatch("a2", "b3", 3),
         ],
         verbose)
+
+
+def match_boiler_2_test(verbose):
+    """
+    Bugfix (for 0.6.1): if there were multiple
+    groups of len > 1 of internally connected match objects
+    with the same score, only the smallest one would
+    be kept--the rest were accidentally discarded.
+    """
+    scrambler = random.Random(0x12345678)
+    for i in range(10):
+        matches = [
+            CorrelatorMatch("a1", "b11", 5),
+            CorrelatorMatch("a1", "b12", 5),
+            CorrelatorMatch("a1", "b13", 5),
+            CorrelatorMatch("a1", "b14", 5),
+            CorrelatorMatch("a1", "b15", 5),
+
+            CorrelatorMatch("a21", "b21", 5),
+            CorrelatorMatch("a22", "b21", 5),
+            CorrelatorMatch("a23", "b21", 5),
+
+            CorrelatorMatch("a3", "b31", 5),
+            CorrelatorMatch("a3", "b32", 5),
+
+            CorrelatorMatch("a4", "b41", 5),
+
+            CorrelatorMatch("a5", "b51", 5),
+
+            CorrelatorMatch("a6", "b61", 5),
+            ]
+        random.shuffle(matches)
+
+        score, result, a, b = boiler_test_driver(matches, verbose)
+        # pprint("matches", matches)
+        # pprint("result", result)
+        assert len(result) == 6, f"should be 6, but {len(result)=}!"
 
 
 ##
