@@ -368,7 +368,6 @@ as it's only a small optimization, and conditions may change.
             ranking=BestRanking,
             ranking_bonus=0,
             ranking_factor=0,
-            key_reuse_penalty_factor=1,
             reuse_a=False,
             reuse_b=False)`
 
@@ -397,13 +396,6 @@ as it's only a small optimization, and conditions may change.
 >
 > (You can't use both a nonzero `ranking_bonus` and a nonzero `ranking_factor` in the
 > same correlation.  Pick at most one!)
->
-> `key_reuse_penalty_factor` is a multiplier applied to the score calculated
-> for a key each time a key is re-mapped to a value.  The second time a key is used,
-> its score is multiplied by `key_reuse_penalty_factor`; the third time,
-> by `key_reuse_penalty_factor**2`, and so on.
-> The default value of 1 means every use of a key gets the same score.
-> `key_reuse_penalty_factor` should be greater than or equal to 0, and less than or equal to 1.
 >
 > `reuse_a` permits values in `dataset_a` to be matched to more than one value in `dataset_b`.
 > `reuse_b` is the same but for values in `dataset_b` matching `dataset_a`.
@@ -821,7 +813,7 @@ this intersection with the marvelously fast `set.intersection()`.
     values_b = the count of values in dataset_b that this key maps to in round round_number
     score_a = weight_a / values_b
     score_b = weight_b / values_a
-    semifinal_score = score_a * score_b * (key_reuse_penalty_factor ** round_number)
+    semifinal_score = score_a * score_b
 
 This `semifinal_score` is then further adjusted based on ranking information,
 if used.  (See below.)
@@ -905,10 +897,9 @@ Wait!  It gets even *more* complicated!
 It's entirely possible for a key in one round in `dataset_a` to be
 matched to a key from a *different* round in `dataset_b`, again like the
 sample of the farms and horses above.  That's right: fuzzy keys can match
-keys from *different rounds!*  Computing proper fuzzy scores thus
-requires tracking separately how many reuses of each key
-we've used so far so that *key_reuse_penalty_factor* can be computed
-properly.  Where exact keys use very precise "rounds", fuzzy keys
+keys from *different rounds!*
+
+Where exact keys use very precise "rounds", fuzzy keys
 require a more dynamic approach.  In essense, an unused key in round *N*
 can "survive" to rounds *N+1*.  That's what the above example with
 farms and ponies is showing us; in round 0, if `"Horse/Clysedale"` in `dataset_a`
@@ -946,10 +937,8 @@ At last, here's the scoring algorithm for fuzzy keys:
     fuzzy_score = the result of key_a.compare(key_b)
     cumulative_a = the cumulative score of all successful matches between key_a and all fuzzy keys in dataset_b
     cumulative_b = the cumulative score of all successful matches between key_b and all fuzzy keys in dataset_a
-    reuse_penalty_a = key_reuse_penalty_factor ** round_a
-    reuse_penalty_b = key_reuse_penalty_factor ** round_b
-    score_ratio_a = (fuzzy_score * reuse_penalty_a) / cumulative_a
-    score_ratio_b = (fuzzy_score * reuse_penalty_b) / cumulative_b
+    score_ratio_a = fuzzy_score / cumulative_a
+    score_ratio_b = fuzzy_score / cumulative_b
     unweighted_score = fuzzy_score * score_ratio_a * score_ratio_b
     score_a = weight_a * unweighted_score_a
     score_b = weight_b * unweighted_score_b
@@ -1018,8 +1007,7 @@ Second, the scores used to compute `actual` and `possible` are *unweighted.*
 If a match between two fuzzy keys resulted in a fuzzy score of `0.3`,
 that adds `0.3` to both `actual_a` and `actual_b`, but each of those fuzzy
 keys adds `1.0` to `possible_a` and `possible_b` respectively.
-All modifiers, like weights and `key_reuse_penalty_factor`,
-are ignored when computing `score_ratio_bonus`.
+Modifiers like weights are ignored when computing `score_ratio_bonus`.
 
 
 ### Choosing Which Matches To Keep: The "Match Boiler"
@@ -1276,7 +1264,7 @@ history of fuzzy scoring in **correlate**--all the approaches
 I tried first that *didn't* work.
 
 Initially, the score for a fuzzy match was simply the fuzzy score
-multiplied by the weights and `key_reuse_penalty_factor`.
+multiplied by the weights and other modifiers.
 This was always a dumb idea; it meant fuzzy matches had *way* more
 impact on the score than they should have.  This was particularly
 true when you got down to the last 10% or 20% of your matches,
