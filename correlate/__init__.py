@@ -27,6 +27,10 @@ keys from both datasets, with tunable heuristics.
 #         when recursing! the *point* is that they're "connected".  which means
 #         they're in seen_a or seen_b.  which means the other connected items
 #         will get removed.  duh!
+#           * uh, that's not correct.  you could have
+#               m1.value_a == m2.value_a
+#               m2.value_b == m3.value_b
+#             but m1 and m3 could have no values in common.
 #       * but still, make sure you add all the isolated_item.value_a and value_b to
 #         seen_a and seen_b, and filter them out, before recursing.
 #       * add test exercising the bug based on grouper
@@ -63,6 +67,7 @@ keys from both datasets, with tunable heuristics.
 #             if you match B to E,
 #             you should resist matching A to F or C to D.
 #         but how do you do that!?
+#             some sort of binary partitioning.  a la BSPs?
 
 import builtins
 from collections import defaultdict
@@ -1109,9 +1114,8 @@ class Correlator:
 
                     weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
 
-                    lowest_round = min(round_a, round_b)
-                    highest_round = max(round_a, round_b)
-                    sort_by = (fuzzy_score, -lowest_round, -highest_round)
+                    sorted_rounds = sorted((-round_a, -round_b), reverse=True)
+                    sort_by = (fuzzy_score, *sorted_rounds)
 
                     # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) {weighted_score=}") #debug
                     item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
