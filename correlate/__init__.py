@@ -20,29 +20,10 @@ keys from both datasets, with tunable heuristics.
 #   * clean up todo list before checking in!
 #   * add CorrelateResult.statistics
 #          result.statistics['total matches'] = len(match array before boiling)
-#   * grouper() isn't smart about reuse_a and reuse_b
-#       * write 3 functions, bind to the correct one
+#   * test: test grouper_reuse_a and grouper_reuse_b
 #   * fuzzy key matching: reorient for speed when there's lots of rounds?
 #       * reorganize so that all rounds of a key are grouped together, so that you only look up the fuzzy score once?
 #         does that help?
-#   * document mapping gail-shapley onto correlate greedy algorithm
-#       * ignore cases greedy can't handle
-#           * when there's partial ordering that can't be expressed as global ordering
-#       * ignore cases gail-shapley can't handle (two matches of equal preference)
-#           * that's why we can ignore the match boiler, we don't need the recursive step
-#       * in a nutshell:
-#           * take all operations performed by gail shapley
-#           * notice that the last "maybe" involving either a man or a woman is really a "yes". mark them so.
-#           * observe that we can swap operations and still preserve the results
-#               * if A and B are two operations, and A is first, we can swap A and B if:
-#                   * if B.response = "yes", and A.response = "maybe", and (A.man == B.man or A.woman == B.woman)
-#                     set A.response = "no"
-#           * now sort the operations by absolute score.  handwave handwave, I assert that the "yes" operations
-#             will cluster to the front.
-#           * literally, the top entry is now the man and the woman with the highest preference for each other,
-#             and it's a yes.  that's the first operation considered by the greedy algorithm.  then the greedy
-#             algorithm ensures that every operation after that one using that same man or woman is always a "no".
-#           * boom goes the dynamite.
 
 #   * match boiler
 #       * maintain the order of match results when recursing
@@ -232,6 +213,49 @@ def grouper(matches):
     return groups
 
 
+def grouper_reuse_a(matches):
+    """
+    Like grouper(), but with reuse_a == True.
+    """
+
+    # i = lambda o: hex(id(o))[2:] #debug
+
+    # print() #debug2
+    # print("grouper input:") #debug2
+    # pprint.pprint(matches) #debug2
+    # print() #debug2
+    groups = defaultdict_list()
+
+    for match in matches:
+        # print("::", match) #debug2
+        groups[match.value_b].append(match)
+    groups = list(groups.values())
+    groups.sort(key=len, reverse=True)
+    return groups
+
+
+def grouper_reuse_b(matches):
+    """
+    Like grouper(), but with reuse_b == True.
+    """
+
+    # i = lambda o: hex(id(o))[2:] #debug
+
+    # print() #debug2
+    # print("grouper input:") #debug2
+    # pprint.pprint(matches) #debug2
+    # print() #debug2
+    groups = defaultdict_list()
+
+    for match in matches:
+        # print("::", match) #debug2
+        groups[match.value_a].append(match)
+    groups = list(groups.values())
+    groups.sort(key=len, reverse=True)
+    return groups
+
+
+
 class MatchBoiler:
     """
     Boils down a list of CorrelatorMatch objects so that value_a and value_b attributes are unique,
@@ -269,19 +293,27 @@ class MatchBoiler:
     are permitted to repeat.  Similarly for reuse_b and value_b.
     """
 
-    def __init__(self, *, matches = None, reuse_a=False, reuse_b=False,
+    def __init__(self, matches = None, *, reuse_a=False, reuse_b=False,
         # name="match boiler", indent="", #debug
         ):
-        self.reuse_a = reuse_a
-        self.reuse_b = reuse_b
-        self.seen_a = set()
-        self.seen_b = set()
         if matches is None:
             matches = []
         self.matches = matches
+        self.reuse_a = reuse_a
+        self.reuse_b = reuse_b
+
         # self.name = name #debug
         # self.indent = indent #debug
         # self.print = print #debug
+
+        self.seen_a = set()
+        self.seen_b = set()
+        if reuse_a:
+            self.grouper = grouper_reuse_a
+        elif reuse_b:
+            self.grouper = grouper_reuse_b
+        else:
+            self.grouper = grouper
 
     def copy(self):
         copy = self.__class__(reuse_a=self.reuse_a, reuse_b=self.reuse_b)
@@ -315,6 +347,7 @@ class MatchBoiler:
         reuse_b = self.reuse_b
         seen_a  = self.seen_a
         seen_b  = self.seen_b
+        grouper = self.grouper
 
         # sort_matches(matches)
 
