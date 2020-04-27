@@ -756,7 +756,9 @@ class Correlator:
                         assert weights
                         total_key_counter += len(weights)
                         for round, weight in enumerate(weights):
-                            keys.append( (key, weight, round) )
+                            subkeys = []
+                            subkeys.append( (key, weight, round) )
+                        keys.append(subkeys)
 
                 total_keys.append(total_key_counter)
 
@@ -1172,28 +1174,32 @@ class Correlator:
                 # fuzzy_boiler.name = "fuzzy boiler" #debug
                 # fuzzy_boiler.print = self.print #debug
 
-                for pair in itertools.product(fuzzy_a[fuzzy_type], fuzzy_b[fuzzy_type]):
-                    tuple_a, tuple_b = pair
-                    key_a, weight_a, round_a = tuple_a
-                    key_b, weight_b, round_b = tuple_b
-                    fuzzy_score = fuzzy_score_cache[key_a][key_b]
-                    # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
+                for subkey_a in fuzzy_a[fuzzy_type]:
+                    for subkey_b in fuzzy_b[fuzzy_type]:
+                        fuzzy_score = None
+                        for pair in itertools.product(subkey_a, subkey_b):
+                            tuple_a, tuple_b = pair
+                            key_a, weight_a, round_a = tuple_a
+                            key_b, weight_b, round_b = tuple_b
 
-                    if fuzzy_score <= 0:
-                        continue
+                            if fuzzy_score is None:
+                                fuzzy_score = fuzzy_score_cache[key_a][key_b]
+                                if fuzzy_score <= 0:
+                                    break
+                                fuzzy_score_cubed = fuzzy_score ** 3
 
-                    fuzzy_score_cubed = fuzzy_score ** 3
+                            # match_print(indexes, f"                {key_a=} x {key_b=} = {fuzzy_score=}") #debug
 
-                    weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
+                            weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
 
-                    sorted_rounds = sorted((-round_a, -round_b), reverse=True)
-                    sort_by = (fuzzy_score, *sorted_rounds)
+                            sorted_rounds = sorted((-round_a, -round_b), reverse=True)
+                            sort_by = (fuzzy_score, *sorted_rounds)
 
-                    # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) {weighted_score=}") #debug
-                    item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
-                    item.scores = (fuzzy_score, weighted_score)
-                    item.sort_by = sort_by
-                    fuzzy_matches.append(item)
+                            # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) {weighted_score=}") #debug
+                            item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
+                            item.scores = (fuzzy_score, weighted_score)
+                            item.sort_by = sort_by
+                            fuzzy_matches.append(item)
 
                 if len(fuzzy_matches) == 0:
                     continue
