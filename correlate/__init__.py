@@ -17,6 +17,33 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
+#   * clean up todo list before checking in!
+#   * add CorrelateResult.statistics
+#          result.statistics['total matches'] = len(match array before boiling)
+#   * grouper() isn't smart about reuse_a and reuse_b
+#       * write 3 functions, bind to the correct one
+#   * fuzzy key matching: reorient for speed when there's lots of rounds?
+#       * reorganize so that all rounds of a key are grouped together, so that you only look up the fuzzy score once?
+#         does that help?
+#   * document mapping gail-shapley onto correlate greedy algorithm
+#       * ignore cases greedy can't handle
+#           * when there's partial ordering that can't be expressed as global ordering
+#       * ignore cases gail-shapley can't handle (two matches of equal preference)
+#           * that's why we can ignore the match boiler, we don't need the recursive step
+#       * in a nutshell:
+#           * take all operations performed by gail shapley
+#           * notice that the last "maybe" involving either a man or a woman is really a "yes". mark them so.
+#           * observe that we can swap operations and still preserve the results
+#               * if A and B are two operations, and A is first, we can swap A and B if:
+#                   * if B.response = "yes", and A.response = "maybe", and (A.man == B.man or A.woman == B.woman)
+#                     set A.response = "no"
+#           * now sort the operations by absolute score.  handwave handwave, I assert that the "yes" operations
+#             will cluster to the front.
+#           * literally, the top entry is now the man and the woman with the highest preference for each other,
+#             and it's a yes.  that's the first operation considered by the greedy algorithm.  then the greedy
+#             algorithm ensures that every operation after that one using that same man or woman is always a "no".
+#           * boom goes the dynamite.
+
 #   * match boiler
 #       * maintain the order of match results when recursing
 #         that will mean that the order of matches returned will
@@ -138,9 +165,9 @@ def grouper(matches):
       * if match1.value_a == match2.value_a,
         then they must be in the same "group" G.
         (Also true if they both have the same value_b.)
-      * if match1.value_a != matchx.value_a for
-        every matchx in group G, and similarly for value_b,
-        then match1 must not be in group G.
+      * if match1.value_a != match2.value_a for
+        every match2 in group G, and similarly for value_b,
+        then match1 *must not* be in group G.
 
     matches is an iterable of CorrelateMatch objects.
     grouper iterates over this list, storing them
@@ -506,6 +533,7 @@ def defaultdict_zero():
 def defaultdict_none():
     return defaultdict(type(None))
 
+
 class Correlator:
 
     class Dataset:
@@ -658,9 +686,22 @@ class Correlator:
                             index_rounds = other._key_to_index.get(key, empty_tuple)
                             if len(index_rounds) > round:
                                 key_count = len(index_rounds[round])
+                                score = weight / key_count
                             else:
-                                key_count = 0
-                            d[key] = weight, key_count
+                                score = 0.0
+                            # I used to store d[key] = (weight, key_count)
+                            # then compute the exact key score with
+                            #    weight_a, key_count_a = weights_a[key]
+                            #    weight_b, key_count_b = weights_b[key]
+                            #    score = (weight_a * weight_b) / (key_count_a / key_count_b)
+                            # But pre-dividing the score by the key count speeds up the
+                            # overall algorithm by maybe 1%.  And it works fine
+                            # because the calculation is symmetric.
+                            #
+                            # Doing it this way *does* introduce a little error.
+                            # Very, very little.  The average error is < 1.5e-17.
+                            # Uh, yeah, I can live with that for a 1% speedup.
+                            d[key] = score
                     rounds = [(set(d), d) for d in rounds]
 
                 exact_rounds.append(rounds)
@@ -1013,9 +1054,9 @@ class Correlator:
         for indexes in all_indexes:
             index_a, index_b = indexes
 
-            # cumulative_possible_exact_score is the total score of actual matched keys for these indexes
-            # this is used in the computation of score_ratio_bonus.
-            cumulative_possible_exact_score = 0
+            # cumulative_base_score is the total score of actual matched keys for these indexes
+            # this is used in the computation of score_ratio_bonus.  this is the pre-weight score.
+            cumulative_base_score = 0
 
             # match_print(indexes, f"first pass {index_a} x {index_b} :") #debug
             # match_print(indexes, f"    value a: index {index_a:>{index_padding_length}} {self.dataset_a.values[index_a]}") #debug
@@ -1043,7 +1084,7 @@ class Correlator:
                 except TypeError:
                     pass
 
-                cumulative_possible_exact_score += len(keys_intersection) * 2
+                cumulative_base_score += len(keys_intersection) * 2
 
                 # sorted_a = "{" + ", ".join(list(sorted(keys_a))) + "}" #debug
                 # sorted_b = "{" + ", ".join(list(sorted(keys_b))) + "}" #debug
@@ -1054,24 +1095,22 @@ class Correlator:
 
                 # weights = [dataset._rounds[0].map[key] for dataset in self.datasets]
 
-                scored = False
+                old_len = len(exact_scores)
                 for key in keys_intersection:
-                    weight_a, len_weights_a = weights_a[key]
-                    weight_b, len_weights_b = weights_b[key]
-                    score = (weight_a * weight_b) / (len_weights_a * len_weights_b)
-                    # match_print(indexes, f"        score for matched key {key!r} =  {score} ({weight_a=} * {weight_b=}) / ({len_weights_a=} * {len_weights_b=})") #debug
+                    score = weights_a[key] * weights_b[key]
+                    # match_print(indexes, f"        score for matched key {key!r} =  {score} ({weights_a[key]=} * {weights_b[key]=})") #debug
                     if score:
-                        scored = True
                         exact_scores.append(score)
 
-                if not scored:
+                if old_len == len(exact_scores):
                     # match_print(indexes, "        no scores, early-exit.") #debug
                     break
 
                 i += 1
 
 
-            exact_score = sum(sorted(exact_scores))
+            exact_scores.sort()
+            exact_score = sum(exact_scores)
             # match_print(indexes) #debug
             # match_print(indexes, f"    {exact_scores=}, {exact_score=}") #debug
 
@@ -1096,7 +1135,7 @@ class Correlator:
 
                 # start = time.perf_counter() #debug
 
-                fuzzy_boiler = MatchBoiler()
+                fuzzy_matches = []
                 # fuzzy_boiler.name = "fuzzy boiler" #debug
                 # fuzzy_boiler.print = self.print #debug
 
@@ -1121,10 +1160,14 @@ class Correlator:
                     item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
                     item.scores = (fuzzy_score, weighted_score)
                     item.sort_by = sort_by
-                    fuzzy_boiler.matches.append(item)
-                fuzzy_boiler.matches.sort(key=lambda x : x.sort_by)
+                    fuzzy_matches.append(item)
 
-                fuzzy_matches = fuzzy_boiler()[0]
+                if len(fuzzy_matches) == 0:
+                    continue
+                if len(fuzzy_matches) > 1:
+                    fuzzy_matches.sort(key=lambda x : x.sort_by)
+                    fuzzy_boiler = MatchBoiler(fuzzy_matches)
+                    fuzzy_matches = fuzzy_boiler()[0]
 
                 # end = time.perf_counter() #debug
                 # self._fuzzy_boiler_times.append(end - start) #debug
@@ -1139,7 +1182,7 @@ class Correlator:
             if not fuzzy_semifinal_matches:
                 # match_print(indexes, f"    no fuzzy scores.  add to third pass.") #debug
                 # match_print(indexes, "") #debug
-                third_pass.append( (indexes, exact_score, cumulative_possible_exact_score) )
+                third_pass.append( (indexes, exact_score, cumulative_base_score) )
                 continue
 
             # goes into second_pass to await final computation
@@ -1147,7 +1190,7 @@ class Correlator:
             # match_print(indexes) #debug
             # match_print(indexes, f"    {len(fuzzy_semifinal_matches)} fuzzy score{plural} added to second pass.") #debug
             # match_print(indexes) #debug
-            second_pass.append( ( indexes, exact_scores, cumulative_possible_exact_score, fuzzy_semifinal_matches ) )
+            second_pass.append( ( indexes, exact_scores, cumulative_base_score, fuzzy_semifinal_matches ) )
 
         # if not second_pass: #debug
             # self.print("[skipping second pass (no fuzzy keys!)]") #debug
@@ -1158,7 +1201,7 @@ class Correlator:
             # self.print() #debug
 
         for t in second_pass:
-            indexes, exact_scores, cumulative_score, fuzzy_semifinal_matches = t
+            indexes, exact_scores, cumulative_base_score, fuzzy_semifinal_matches = t
             # index_a, index_b = indexes #debug
             # match_print(indexes, f"second pass {index_a} x {index_b} :") #debug
             # match_print(indexes, f"    {exact_scores=}") #debug
@@ -1173,7 +1216,7 @@ class Correlator:
                 hits_in_a = fuzzy_key_cumulative_score_a[tuple_a]
                 hits_in_b = fuzzy_key_cumulative_score_b[tuple_b]
                 score = weighted_score / (hits_in_a * hits_in_b)
-                cumulative_score += fuzzy_score * 2
+                cumulative_base_score += fuzzy_score * 2
                 # match_print(indexes, f"    {score=} = {weighted_score=} / ({hits_in_a=} * {hits_in_b=})") #debug
                 # match_print(indexes) #debug
                 exact_scores.append(score)
@@ -1181,22 +1224,22 @@ class Correlator:
             score = sum(exact_scores)
             # match_print(indexes, f"    final {score=}") #debug
             # match_print(indexes) #debug
-            third_pass.append( (indexes, score, cumulative_score) )
+            third_pass.append( (indexes, score, cumulative_base_score) )
 
         # self.print("[third pass]") #debug
         # self.print() #debug
         for t in third_pass:
-            indexes, score, cumulative_actual_score = t
+            indexes, score, cumulative_base_score = t
             index_a, index_b = indexes
             # match_print(indexes, f"third pass {index_a} x {index_b} :") #debug
             # match_print(indexes, f"    score = {score}") #debug
 
             if score_ratio_bonus:
                 bonus = (
-                    (score_ratio_bonus * cumulative_actual_score)
+                    (score_ratio_bonus * cumulative_base_score)
                     / (total_keys_a[index_a] + total_keys_b[index_b])
                     )
-                # match_print(indexes, f"    hit ratio {bonus=} = {score_ratio_bonus=} * {cumulative_actual_score=}) / ({total_keys_a[index_a]=} + {total_keys_b[index_b]=})") #debug
+                # match_print(indexes, f"    hit ratio {bonus=} = {score_ratio_bonus=} * {cumulative_base_score=}) / ({total_keys_a[index_a]=} + {total_keys_b[index_b]=})") #debug
                 score += bonus
 
             if not using_rankings:
