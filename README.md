@@ -424,6 +424,37 @@ as it's only a small optimization, and conditions may change.
 > representing the ranking; if this value is the 19th in the dataset,
 > you should supply `ranking=19`.
 
+`CorrelatorResult()`
+
+> The class for objects returned by `Correlator.correlate()`.
+> Contains four members:
+>
+> * `matches`, a `list` of `CorrelatorMatch()` objects, sorted with highest score first
+> * `unmatched_a`, the `set` of values from `dataset_a` that were not matched
+> * `unmatched_b`, the `set` of values from `dataset_b` that were not matched
+> * `statistics`, a `dict` containing statistics about the correlation
+
+`CorrelatorResult.normalize(high=None, low=None)`
+
+> Normalizes the scores in `matches`.
+> When `normalize()` is called with its default values, it adjusts every score
+> so that they fall in the range `(0, 1]`.
+> If `high` is not specified, it defaults to the highest score in `matches`.
+> If `low` is not specified, it defaults to the `minimum_score` for the correlation.
+
+
+`CorrelatorMatch()`
+
+> The class for objects representing an individual match made
+> by `Correlator.correlate()`.
+> Contains three members:
+>
+> * `value_a`, a value from `dataset_a`.
+> * `value_b`, a value from `dataset_b`.
+> * `score`, a number representing the confidence in this match.
+>   The higher the `score`, the higher the confidence.
+>   Scores don't have a predefined intrinsic meaning; they're a result
+>   of all the inputs to **correlate.**
 
 `Correlator.str_to_keys(s)`
 
@@ -600,16 +631,27 @@ this provided a small but measurable speedup.
 
 #### Sharpen Your Fuzzy Keys
 
-If you're using fuzzy keys, the most important thing you can do is *sharpen
-your keys.*  Fuzzy string-matching libraries have a naughty habit of scoring
+If you're using fuzzy keys, make sure you *sharpen* your fuzzy keys.
+Fuzzy string-matching libraries have a naughty habit of scoring
 not-very-similar strings as not *that* much less than almost-exactly-the-same
 strings.  If you give that data unaltered to **correlate,** that "everything
-looks roughly the same" outlook will be reflected in your final results as
-mediocre matches.  In those cases it's best to force your fuzzy
-matches to extremes.  The best technique is simply to have a minimum score
-for fuzzy maches in these cases.  Squaring or cubing the resulting
-score is also a cheap way to attenuate weaker fuzzy scores while preserving
-the stronger fuzzy scores.
+looks roughly the same" outlook will be reflected in your results as
+mediocre matches.
+
+In general, you want to force your fuzzy matches to extremes.
+Two good techniques:
+
+* Multiply your fuzzy score by itself.  Squaring or even cubing a fuzzy
+  score will preserve high scores and attenuate low scores.
+  Note that the fuzzy scoring algorithm already effectively cubes fuzzy
+  scores, so there's already a certain amount of this going on.
+* Specify a minimum score for fuzzy matches, and replace any fuzzy score
+  below that minimum with `0`.
+  * Possibly remap the remaining range to the entire range.
+    For example, if your minimum score is `0.6`, should you simply
+    return values from `0.6` to `1`?  Or should you stretch the scores
+    over the entire range with `(fuzzy_score - 0.6) / (1 - 0.6)`?
+    You may need to experiment with both to find out what works well for you.
 
 
 ### What Do These Scores Mean?

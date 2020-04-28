@@ -18,6 +18,7 @@ keys from both datasets, with tunable heuristics.
 
 # TODO:
 #   * clean up todo list before checking in!
+#   * all input parameters for correlate (except matches) should be statistics
 #   * test: test grouper_reuse_a and grouper_reuse_b
 #   * test: test regression fixed by grouper
 #             if grouper returns groups of length [1, 2, 3, 4]
@@ -279,8 +280,8 @@ class MatchBoiler:
     If reuse_a is True, the values of value_a in the returned "results"
     are permitted to repeat.  Similarly for reuse_b and value_b.
 
-    (You can call the boiler with reuse_a == reuse_b == True.
-     But in that case you didn't really need the boiler.)
+    (You *can* call the boiler with reuse_a == reuse_b == True.
+     But in that case you didn't really need a boiler.)
     """
 
     def __init__(self, matches = None, *, reuse_a=False, reuse_b=False,
@@ -960,7 +961,15 @@ class Correlator:
 
         assert minimum_score >= 0
 
-        statistics = {}
+        statistics = {
+            "minimum_score"     : minimum_score,
+            "score_ratio_bonus" : score_ratio_bonus,
+            "ranking"           : ranking,
+            "ranking_bonus"     : ranking_bonus,
+            "ranking_factor"    : ranking_factor,
+            "reuse_a"           : reuse_a,
+            "reuse_b"           : reuse_b,
+        }
 
         empty_set = set()
         empty_dict = {}

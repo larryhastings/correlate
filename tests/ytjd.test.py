@@ -166,19 +166,18 @@ class YTJDTest:
 
         self.use_fuzzy_search_for_title = False
 
-        # use_fuzzy_search_for_title = False
+        # when use_fuzzy_search_for_title is False:
         self.exact_title_key_weight = 1
 
-        # use_fuzzy_search_for_title = True
+        # when use_fuzzy_search_for_title is True:
         self.fuzzy_title_weight = 8
         self.fuzzy_title_minimum_score = 0.5
-        self.fuzzy_title_score_power = 3
 
         self.episode_date_weight = 1
 
         self.use_episode_number_as_ranking = True
 
-        # use_episode_number_as_ranking = False
+        # when use_episode_number_as_ranking is False:
         self.episode_number_weight = 1
 
         self.score_ratio_bonus = 0.5
@@ -310,9 +309,6 @@ class YTJDTest:
                 correct_match = int(correct_match)
             correct_matches.append(correct_match)
 
-        # minimum_score = 0.4
-
-
     def set_line(self, dataset, original_line, line):
         # line = line.lower().strip()
 
@@ -365,7 +361,7 @@ class YTJDTest:
                 # split alternate titles into separate fuzzy keys
                 for subtitle in field.split(" aka "):
                     # print(f"    string used for fuzzy match {field!r}")
-                    key = StringFuzzyKey(subtitle, minimum_score=self.fuzzy_title_minimum_score, score_power=self.fuzzy_title_score_power)
+                    key = StringFuzzyKey(subtitle, minimum_score=self.fuzzy_title_minimum_score)
                     # print(f"    {dataset._id=} {field=} {key=} -> {original_line=}")
                     dataset.set(key, original_line, weight=self.fuzzy_title_weight)
             else:
@@ -471,18 +467,17 @@ class StringFuzzyKey(correlate.FuzzyKey):
     def __repr__(self):
         return f"<StringFuzzyKey {self.s!r}>"
 
-    def __init__(self, s, *, minimum_score, score_power):
+    def __init__(self, s, *, minimum_score):
         self.s = s
         self.lower_s = s.lower()
         self.minimum_score = minimum_score
-        self.score_power = score_power
 
     def compare(self, other):
         score = (ratio(self.lower_s, other.lower_s) / 100) - self.minimum_score
         if score < 0:
             return 0.0
-        score = score / (1.0 - self.minimum_score)
-        score = score ** self.score_power
+        if self.minimum_score != 1:
+            score = score / (1.0 - self.minimum_score)
         return score
 
 _StringFuzzyKey = StringFuzzyKey
