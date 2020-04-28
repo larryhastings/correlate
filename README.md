@@ -43,11 +43,8 @@ are an excellent match.
 That's the basics, but **correlate** supports some advanced features:
 
 * A key mapping can optionally specify a *weight*.
-
 * You can map a key *multiple times.*
-
 * Keys can be *fuzzy keys,* keys that may only partially match each other.
-
 * The order of values can inform the matches.  This is called *ranking.*
 
 ### Quick Start
@@ -183,9 +180,7 @@ The matches are returned as a list of `correlator.CorrelatorMatch`
 objects.  Each object contains three members:
 
 * `value_a`, a reference to an object from `dataset_a`,
-
 * `value_b`, a reference to an object from `dataset_b`,
-
 * and a floating-point `score`.
 
 Each `CorrelatorMatch` object tells you that
@@ -200,19 +195,16 @@ That's the basics.  But **correlate** supports some very sophisticated
 behavior:
 
 * When mapping a key to a value, you may specify an optional *weight*,
-which represents the relative importance of this key.  The default
-weight is 1.  Higher scores indicate a higher significance; a weight of
-2 tells **correlate** that this key mapped to this value is twice as
-significant.
-
+  which represents the relative importance of this key.  The default
+  weight is 1.  Higher scores indicate a higher significance; a weight of
+  2 tells **correlate** that this key mapped to this value is twice as
+  significant.
 * A key can map to a value multiple times.  Each mapping can have its own weight.
-
-* If both datasets are ordered, this ordering can optionally influence the match scores.
-**correlate** calls this *ranking.*  Ranking is an attribute of values, not keys.
-
+  * If both datasets are ordered, this ordering can optionally influence the match scores.
+  **correlate** calls this *ranking.*  Ranking is an attribute of values, not keys.
 * Keys can be "fuzzy", meaning two keys can be a partial match rather than a binary yes/no.
-Fuzzy keys in **correlate** must inherit from a custom abstract base class called
-`correlate.FuzzyKey`.
+  Fuzzy keys in **correlate** must inherit from a custom abstract base class called
+  `correlate.FuzzyKey`.
 
 ## Sample Code And infer_mv
 
@@ -639,7 +631,6 @@ Mathematically:
     minimum_score = the minimum_score passed in to correlate()
     delta = highest_score - minimum_score
     normalized_score = (score - minimum_score) / delta
-
 
 
 ## The Algorithm And The Code
@@ -1601,13 +1592,9 @@ exactly the same.  But there's a lot of overlap.  Both algorithms can
 handle an input where:
 
 * every match between a man `A` and a woman `X` is assigned a numerical score,
-
 * every operation involving any particular man `A` has a unique score,
-
 * and also for every woman `X`,
-
 * and there are exactly as many men as there are women.
-
 
 I assert that, for these mutually acceptable inputs, both algorithms
 produce the same result.  Here's an informal handwave-y proof.
@@ -1657,10 +1644,9 @@ and say that it matches man `A` with woman `X`.
 We now know the following are true:
 
 * `X` is the first choice of `A`.  Therefore `A` will ask
-`X` first.
-
+  `X` first.
 * `A` is the first choice of `X`.  Therefore `X` is
-guaranteed to have said *yes*.
+  guaranteed to have said *yes*.
 
 Since the first operation `P` is guaranteed to be a *yes*,
 that means that every subsequent operation involving either
@@ -1670,9 +1656,7 @@ We now iterate down the list to find an operation `Q`
 involving man `B` and woman `Y`. We define `Q` as:
 
 * `Q != P`, and `Q` is after `P` in the ordered list of operations,
-
 *  `B != A`,
-
 *  and `Y != X`.
 
 By definition `Q` must also be a *yes*.  If there are any operations
