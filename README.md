@@ -1066,7 +1066,7 @@ such that:
 Finding the perfectly optimal solution would require computing every
 possible set of matches, then computing the cumulative score of that
 set, then keeping the set with the highest score.  Unfortuantely,
-that algorithm is `O(M**N)`,
+that algorithm is `O(nⁿ)`,
 which is so amazingly expensive that we can't even consider it.
 (You probably want your results from **correlate** before our sun
 turns into a red giant.)
@@ -1075,20 +1075,18 @@ Instead, **correlate** uses a comparatively cheap "greedy"
 algorithm to compute the subset.  Here's the algorithm in a
 nutshell:
 
-* Sort `matches` with highest score first.
-* For every match `M` in `matches`:
-    * if `value_a` hasn't been matched yet,
-    * and `value_b` hasn't been matched yet,
-        * keep `M` as a good match,
-        * remember that `value_a` has been matched,
-        * and remember that `value_b` has been matched.
+* Computing the list of matches, which is `O(n²)`.
+* Sort `matches` with highest score first, which is `O(n log n)`.
+* The "greedy" algorithm, which is `O(n)`:
+    * For every match `M` in `matches`:
+        * if `value_a` hasn't been matched yet,
+        * and `value_b` hasn't been matched yet,
+            * keep `M` as a good match,
+            * remember that `value_a` has been matched,
+            * and remember that `value_b` has been matched.
 
-Sorting the list is `O(n log n)`.  (But it's done in C
-so that part is pretty quick.)  After that, the rest of
-the "greedy" algorithm is `O(n)`.  So overall this
-algorithm is `O(n log n)`.  It's not *guaranteed* to
-produce the optimal subset, but in practice it should
-be optimal.
+Overall this algorithm is `O(n²)`.  It's not *guaranteed*
+to produce the optimal subset, but in practice it should be optimal.
 
 The bad news: late in development of **correlate** I
 realized there was a corner case where odds are good the
@@ -1137,7 +1135,12 @@ With the "match boiler" in place, **correlate** seems to produce optimal
 results even in these rare ambigous situations.
 I'm not sure what the *big-O* notation is for the "match boiler".
 The pathological worst case, where every match has the same score,
-is probably `O(M**N)`.  Let's hope that never happens!
+is probably on the order of `O(n log n)`, where the `log n` component
+represents the recursive operations.  Even in the pathological worst case,
+where every match has the same score, and they're all connected to
+each other via having `value_a` and `value_b` in common, the recursive step
+would still tend to cut the group in half, cutting down the number of
+recursive steps to `log n`.
 
 #### Cheap Recursion And The "Grouper"
 
@@ -1268,7 +1271,7 @@ and `X` is a good match for `A`, and `A` is a good match for `Y`, then,
 by transitivity, in the real world, `B` is probably a good match for `Y`.
 
 So I think this scenario isn't realistic.  And the only way
-to fix it is with the crushingly expensive `O(M**N)` algorithm.
+to fix it is with the crushingly expensive `O(nⁿ)` algorithm.
 It's just not worth it.  So, relax!  YAGNI.
 
 
@@ -1582,8 +1585,10 @@ the original Gale-Shapley algorithm doesn't allow.
 Ensuring that **correlate** returns the highest cumulative score in this situation
 required adding the sophisticated recursive step to the "match boiler".  We'd have to make
 a similar modification to Gale-Shapley, giving it a recursive step.  Gale-Shapley is
-already `O(N**2)`; the modified version would be `O(N**3)`.
+already `O(n²)`; I think the modified version would be `O(n² log n)`.
 (But, like **correlate**, this worst-case shouldn't happen with real-world data.)
+Anyway, a modified Gale-Shapley that works for all **correlate** inputs is definitely
+more expensive than what **correlate** has--or what it needs.
 
 #### Mapping Gale-Shapley To The Correlate Greedy Algorithm
 
@@ -1655,20 +1660,24 @@ that means that every subsequent operation involving either
 We now iterate down the list to find an operation `Q`
 involving man `B` and woman `Y`. We define `Q` as:
 
-* `Q != P`, and `Q` is after `P` in the ordered list of operations,
-*  `B != A`,
-*  and `Y != X`.
+* `Q != P`, and therefore `Q` is after `P` in our ordered list of operations,
+* `B != A`, and
+* `Y != X`.
 
 By definition `Q` must also be a *yes*.  If there are any operations
 between `P` and `Q`, these operations involve either `A` or `X`.
 Therefore they must be *no*.  Therefore `Q` represents the
-highest preference for `B` and `Y`, where `Y` did not jilt,
-and where `B` would not have asked yet.
+highest remaining preference for both `B` and `Y`.
 
-This list of operations is now the operations performed by
-the **correlate** "greedy" algorithm, more or less.  It sorts
-the matches by score, then iterates down it.  For every man `A`
-and woman `X`, if neither `A` nor `X` has been matched yet,
+Observe that the whole list looks like this.  Every *yes* is
+the first operation for both that man and that woman in which
+they weren't paired up with a woman or man (respectively) that
+had already said *yes* to someone else.
+
+Therefore this list of operations now resembles the operations
+performed by the **correlate** "greedy" algorithm, more or less.
+It sorts the matches by score, then iterates down it.  For every
+man `A` and woman `X`, if neither `A` nor `X` has been matched yet,
 it matches `A` and `X` and remembers that they've been matched.
 
 It's possible that there's minor variation in the list of
