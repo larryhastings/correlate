@@ -402,6 +402,10 @@ as it's only a small optimization, and conditions may change.
 > If you set both reuse flags to True, the `correlate.CorrelatorResult.matches`
 > list returned will contain *every* possible match.
 
+`Correlator.print_datasets()`
+
+> Prints both datasets in a human-readable form.  Uses `self.print` to print.
+
 `Correlate.Dataset()`
 
 > The class for objects representing a dataset.  Behaves somewhat like
@@ -427,6 +431,7 @@ as it's only a small optimization, and conditions may change.
 > if the dataset is ordered.  `ranking` should be an integer
 > representing the ranking; if this value is the 19th in the dataset,
 > you should supply `ranking=19`.
+
 
 `Correlator.str_to_keys(s)`
 
@@ -1271,7 +1276,7 @@ high against `X` but low against `Y`?  If `B` is a good match for `X`,
 and `X` is a good match for `A`, and `A` is a good match for `Y`, then,
 by transitivity, in the real world, `B` is probably a good match for `Y`.
 
-I therefore think this scenario simply isn't realistic.  And the only way
+So I think this scenario isn't realistic.  And the only way
 to fix it is with the crushingly expensive `O(M**N)` algorithm.
 It's just not worth it.  So, relax!  YAGNI.
 

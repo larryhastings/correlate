@@ -28,7 +28,6 @@ keys from both datasets, with tunable heuristics.
 #             I mean, it should be fixed now.  but that's what tests are for!
 #   * test: write a function that asserts the returned results from correlate are
 #     in the same order as those items were in the original.  call it from every test.
-#   * move dataset dumper code to its own non-debug function, it's useful all the time
 
 #   * doc: new fuzzy boiler approach
 #       * move streamlined below rounds, because rounds are mostly conceptual at this point
@@ -476,8 +475,13 @@ class MatchBoiler:
             merged_groups = list(group)
             for group in groups:
                 merged_groups.extend(group)
-            # reorder merged_groups so it's in original order.
+            # reorder merged_groups so it's in original (not reversed) order.
             # again, we're striving for *absolute* stability here.
+            # we want to do the recursions in original order, then sort
+            # by overall score.  that way, if there are multiple results
+            # with the same highest overall score, and we use the *first*
+            # one, we're guaranteed that it's the earliest one from the
+            # original matches.
             ordering_map = {item: i for i, item in enumerate(original_matching_items)}
             merged_groups.sort(key=ordering_map.get)
 
@@ -520,6 +524,9 @@ class MatchBoiler:
             # and all the items in experiment_results with the same score.
             # naturally, experiment_results is already sorted, with highest score first,
             # and there are guaranteed to be no items with a score > top_score.
+            # we need to move these into kept_items because we need to mix them
+            # back in with the items from the connected groups of length 1, and
+            # sort them all together into happy smiling original (reversed!) sorted order.
             for i, item in enumerate(experiment_results):
                 if item.score != top_score:
                     break
@@ -831,6 +838,50 @@ class Correlator:
         # self._match_boiler_times = [] #debug
         # self._fuzzy_boiler_times = [] #debug
 
+    def print_datasets(self):
+        all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = self.dataset_a._precompute_streamlined_data(self.dataset_b)
+        all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = self.dataset_b._precompute_streamlined_data(self.dataset_a)
+
+        for dataset, exact_rounds, fuzzy_types in (
+            (self.dataset_a, exact_rounds_a, fuzzy_types_a),
+            (self.dataset_b, exact_rounds_b, fuzzy_types_b),
+            ):
+            self.print(f"[dataset {dataset.id}]")
+            def print_key_and_weight(key, weight):
+                if weight != dataset.default_weight:
+                    weight_suffix = f" weight={weight}"
+                else:
+                    weight_suffix = ""
+                self.print(f"                {key!r}{weight_suffix}")
+
+            for index, (value, exact_round, fuzzy_round) in enumerate(zip(dataset.values, exact_rounds, fuzzy_types)):
+                self.print(f"    value {index} {value!r}")
+                if exact_round:
+                    self.print(f"        exact keys")
+                for round_number, (keys, weights) in enumerate(exact_round):
+                    self.print(f"            round {round_number}")
+                    keys = list(sorted(keys))
+                    for key in keys:
+                        print_key_and_weight(key, weights[key])
+
+                for fuzzy_type, fuzzy_key_lists in fuzzy_round.items():
+                    self.print(f"        fuzzy type {fuzzy_type}")
+
+                    for fuzzy_keys in fuzzy_key_lists:
+                        for round_number in range(dataset._max_round):
+                            self.print(f"            round {round_number}")
+                            printed = False
+                            for t in fuzzy_keys:
+                                key, weight, round = t
+                                if round == round_number:
+                                    printed = True
+                                    print_key_and_weight(key, weight)
+                            if not printed:
+                                break
+                            round_number += 1
+
+                self.print()
+
     def _validate(self):
         # self.print(f"validating {self}") #debug
 
@@ -915,47 +966,7 @@ class Correlator:
         all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = a._precompute_streamlined_data(b)
         all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = b._precompute_streamlined_data(a)
 
-        # dump datasets
-        # for dataset, exact_rounds, fuzzy_types in ( #debug
-            # (self.dataset_a, exact_rounds_a, fuzzy_types_a), #debug
-            # (self.dataset_b, exact_rounds_b, fuzzy_types_b), #debug
-            # ): #debug
-            # self.print(f"[dataset {dataset.id}]") #debug
-            # def print_key_and_weight(key, weight): #debug
-                # if weight != dataset.default_weight: #debug
-                    # weight_suffix = f" weight={weight}" #debug
-                # else: #debug
-                    # weight_suffix = "" #debug
-                # self.print(f"                {key!r}{weight_suffix}") #debug
-
-            # for index, (value, exact_round, fuzzy_round) in enumerate(zip(dataset.values, exact_rounds, fuzzy_types)): #debug
-                # self.print(f"    value {index} {value!r}") #debug
-                # if exact_round: #debug
-                    # self.print(f"        exact keys") #debug
-                # for round_number, (keys, weights) in enumerate(exact_round): #debug
-                    # self.print(f"            round {round_number}") #debug
-                    # keys = list(sorted(keys)) #debug
-                    # for key in keys: #debug
-                        # print_key_and_weight(key, weights[key]) #debug
-
-                # for fuzzy_type, fuzzy_key_lists in fuzzy_round.items(): #debug
-                    # self.print(f"        fuzzy type {fuzzy_type}") #debug
-
-                    # for fuzzy_keys in fuzzy_key_lists: #debug
-                        # for round_number in range(dataset._max_round): #debug
-                            # self.print(f"            round {round_number}") #debug
-                            # printed = False #debug
-                            # for t in fuzzy_keys: #debug
-                                # key, weight, round = t #debug
-                                # if round == round_number: #debug
-                                    # printed = True #debug
-                                    # print_key_and_weight(key, weight) #debug
-                            # if not printed: #debug
-                                # break #debug
-                            # round_number += 1 #debug
-
-                # self.print() #debug
-
+        # self.print() #debug
 
         # correlate makes four passes over the list of possible matches.
 
