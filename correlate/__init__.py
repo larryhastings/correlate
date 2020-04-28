@@ -21,37 +21,15 @@ keys from both datasets, with tunable heuristics.
 #   * add CorrelateResult.statistics
 #          result.statistics['total matches'] = len(match array before boiling)
 #   * test: test grouper_reuse_a and grouper_reuse_b
-#   * fuzzy key matching: reorient for speed when there's lots of rounds?
-#       * reorganize so that all rounds of a key are grouped together, so that you only look up the fuzzy score once?
-#         does that help?
-
-#   * match boiler
-#       * maintain the order of match results when recursing
-#         that will mean that the order of matches returned will
-#         be identical to the original matches coming in, but filtered
-#           * idea: jot down indices of all members that you keep in a set.
-#             then at the last stage extend with [x for i, x in enumerate(result) if i in jotted_down_set]
-#       * note that you don't need to append the other members of the group
-#         when recursing! the *point* is that they're "connected".  which means
-#         they're in seen_a or seen_b.  which means the other connected items
-#         will get removed.  duh!
-#           * uh, that's not correct.  you could have
-#               m1.value_a == m2.value_a
-#               m2.value_b == m3.value_b
-#             but m1 and m3 could have no values in common.
-#       * but still, make sure you add all the isolated_item.value_a and value_b to
-#         seen_a and seen_b, and filter them out, before recursing.
-#       * add test exercising the bug based on grouper
-#             if you return groups of length [1, 2, 3, 4]
+#   * test: test regression fixed by grouper
+#             if grouper returns groups of length [1, 2, 3, 4]
 #             we were recursing on all the members of the group of length 2
 #             AND THROWING AWAY THE MEMBERS OF GROUPS LENGTHS 3 AND 4
 #             I mean, it should be fixed now.  but that's what tests are for!
-#
-#   * doc: match boiler is gale-shipley with operations reordered/unrolled
-#       * MatchBoiler can't return unused, because it may not see all items
-#           * items that only match with score 0
-#           * items that have no keys in common with any other item and get discarded immediately
-#
+#   * test: write a function that asserts the returned results from correlate are
+#     in the same order as those items were in the original.  call it from every test.
+#   * move dataset dumper code to its own non-debug function, it's useful all the time
+
 #   * doc: new fuzzy boiler approach
 #       * move streamlined below rounds, because rounds are mostly conceptual at this point
 #
@@ -160,6 +138,16 @@ def grouper(matches):
     with the largest sub-lists first.
 
     Sub-lists are guaranteed to be len() 1 or greater.
+
+    Sub-lists internally preserve the order of the matches
+    passed in.  For every item1 and item2 in a sub-list,
+    if item1 was before item2 in matches, item1 is guaranteed
+    to be before item2 in that sub-list.
+
+    Doesn't support reuse_a or reuse_b; use
+    grouper_reuse_a() or grouper_reuse_b() for that.
+    (If reuse_a == reuse_b == True, you don't need
+    grouper() at all, you just keep everything.)
     """
     keys_a = {}
     keys_b = {}
@@ -267,15 +255,17 @@ class MatchBoiler:
       * "value_a" and "value_b" must support equality testing and must be hashable.
     The matches list is modified--if you don't want that, pass in a copy.
     The matches list you pass in MUST be sorted, with highest scores at the end.
-      MatchBoiler is very careful to be stable, so it avoids re-sorting the list
-      as it runs.  (Technically the list only has to be sorted at the time you call
-      the object.)
+      (Technically the list only has to be sorted at the time you call the object,
+      not when it's passed in to the constructor.)
 
     To actually compute the boiled-down list of matches, call the object.
     This returns a tuple of (results, seen_a, seen_b):
       * "results" is a filtered version of the "matches" list where any particular
         value of "value_a" or "value_b" appears only once (assuming reuse_a == reuse_b == False).
-        "results" is sorted with highest score *first*.
+        "results" is sorted with highest score *first*.  Note, this is the opposite of the input
+        list "matches".  Apart from reversing and filtering the values, MatchBoiler is stable;
+        the entries in "results" are guaranteed to be in the same (reversed) order they were
+        in "matches".
       * seen_a is the set of values form value_a present in "results".
       * seen_b is the set of values from value_b present in "results".
 
@@ -291,6 +281,9 @@ class MatchBoiler:
 
     If reuse_a is True, the values of value_a in the returned "results"
     are permitted to repeat.  Similarly for reuse_b and value_b.
+
+    (You can call the boiler with reuse_a == reuse_b == True.
+     But in that case you didn't really need the boiler.)
     """
 
     def __init__(self, matches = None, *, reuse_a=False, reuse_b=False,
@@ -377,7 +370,14 @@ class MatchBoiler:
                 or
                 ((not reuse_b) and (top_item.value_b in seen_b))
                 ):
-                # self.print(f"{self.indent}        already used value_a or value_b, discarding.") #debug
+                # text = [] #debug
+                # if (not reuse_a) and (top_item.value_a in seen_a): #debug
+                    # text.append("already seen value_a") #debug
+                # if (not reuse_b) and (top_item.value_b in seen_b): #debug
+                    # text.append("already seen value_b") #debug
+                # text.append("discarding.") #debug
+                # text = ", ".join(text) #debug
+                # self.print(f"{self.indent}        {text}") #debug
                 continue
 
             # the general case is: the top item's score is unique.
@@ -409,10 +409,22 @@ class MatchBoiler:
                     continue
                 matching_items.append(matching_item)
 
-            # preserve order of matching items!
-            matching_items = list(reversed(matching_items))
+            # we're going to preserve order for the output items.
+            # this is a little tricky!
+            # first, preserve the now-*reversed* order of matching items.
+            # why reversed? that's the order in which we want to return them.
+            matching_items = list(matching_items)
+            # this one preserves the original order!
+            original_matching_items = list(reversed(matching_items))
 
+            # second, we need a place to put all the items from
+            # matching_items that we've kept.  the order of items
+            # in here is gonna get scrambled; we'll restore it at the end.
+            kept_items = []
+
+            # grouper is guaranteed non-destructive.
             groups = grouper(matching_items)
+
 
             # for disjoint items (items whose value_a and value_b
             # only appear once in matching_scores), immediately keep them.
@@ -423,7 +435,7 @@ class MatchBoiler:
                 group = groups.pop()
                 if len(group) == 1:
                     item = group[0]
-                    results.append(item)
+                    kept_items.append(item)
                     seen_a.add(item.value_a)
                     seen_b.add(item.value_b)
                     continue
@@ -464,6 +476,10 @@ class MatchBoiler:
             merged_groups = list(group)
             for group in groups:
                 merged_groups.extend(group)
+            # reorder merged_groups so it's in original order.
+            # again, we're striving for *absolute* stability here.
+            ordering_map = {item: i for i, item in enumerate(original_matching_items)}
+            merged_groups.sort(key=ordering_map.get)
 
             # self.print(f"{self.indent}        recursing on smallest connected group, length {len(group)}.") #debug
             all_experiment_results = []
@@ -492,12 +508,35 @@ class MatchBoiler:
                 experiment_score = item.score + sum((o.score for o in experiment_results))
                 all_experiment_results.append( (experiment_score, experiment, item, experiment_results, seen_a, seen_b) )
 
-            #
             all_experiment_results.sort(key=lambda o: o[0], reverse=True)
-
-            # these have already been filtered!
             experiment_score, experiment, item, experiment_results, seen_a, seen_b = all_experiment_results[0]
-            results.append(item)
+
+            # here's where we restore the order of kept_items.
+            # first, move *all* the items we kept from this run
+            # of identically-scored items into kept_items.
+            # that means the item we recursed on:
+            kept_items.append(item)
+
+            # and all the items in experiment_results with the same score.
+            # naturally, experiment_results is already sorted, with highest score first,
+            # and there are guaranteed to be no items with a score > top_score.
+            for i, item in enumerate(experiment_results):
+                if item.score != top_score:
+                    break
+            else:
+                i = len(experiment_results)
+
+            if i:
+                kept_items.extend(experiment_results[:i])
+                experiment_results = experiment_results[i:]
+            assert all([item.score == top_score for item in kept_items])
+            assert all([item.score != top_score for item in experiment_results])
+
+            # now the clever part: sort kept_items back into the original order!
+            ordering_map = {item: i for i, item in enumerate(matching_items)}
+            kept_items.sort(key=ordering_map.get)
+
+            results.extend(kept_items)
             results.extend(experiment_results)
             break
 
@@ -519,6 +558,9 @@ class CorrelatorMatch:
 
     def __iter__(self):
         return iter(self.tuple)
+
+    def __hash__(self):
+        return hash(self.tuple)
 
 class CorrelatorResult:
     def __init__(self, matches, unmatched_a, unmatched_b, minimum_score):
@@ -691,7 +733,12 @@ class Correlator:
             # if no keys, exact_rounds[index] = [] # empty list
             exact_rounds = []
 
-            # fuzzy_types[index][type] = [(key, weight, round#), ...]
+            # fuzzy_types[index][type] = [ [(key, weight, round#), ...], ... ]
+            #                            ^ ^
+            #                            1 2
+            # 2 is a list of tuples where every key is the same, but weight and round differ
+            # 1 is just a list of those.
+            #
             # all rounds are merged together
             # if no keys, fuzzy_types[index][type] won't be set
             fuzzy_types = []
@@ -755,8 +802,8 @@ class Correlator:
                     for key, weights in k.items():
                         assert weights
                         total_key_counter += len(weights)
+                        subkeys = []
                         for round, weight in enumerate(weights):
-                            subkeys = []
                             subkeys.append( (key, weight, round) )
                         keys.append(subkeys)
 
@@ -889,22 +936,23 @@ class Correlator:
                     # self.print(f"            round {round_number}") #debug
                     # keys = list(sorted(keys)) #debug
                     # for key in keys: #debug
-                        # print_key_and_weight(key, weights[key][1]) #debug
+                        # print_key_and_weight(key, weights[key]) #debug
 
-                # for fuzzy_type, fuzzy_keys in fuzzy_round.items(): #debug
+                # for fuzzy_type, fuzzy_key_lists in fuzzy_round.items(): #debug
                     # self.print(f"        fuzzy type {fuzzy_type}") #debug
 
-                    # for round_number in range(dataset._max_round): #debug
-                        # self.print(f"            round {round_number}") #debug
-                        # printed = False #debug
-                        # for t in fuzzy_keys: #debug
-                            # key, weight, round = t #debug
-                            # if round == round_number: #debug
-                                # printed = True #debug
-                                # print_key_and_weight(key, weight) #debug
-                        # if not printed: #debug
-                            # break #debug
-                        # round_number += 1 #debug
+                    # for fuzzy_keys in fuzzy_key_lists: #debug
+                        # for round_number in range(dataset._max_round): #debug
+                            # self.print(f"            round {round_number}") #debug
+                            # printed = False #debug
+                            # for t in fuzzy_keys: #debug
+                                # key, weight, round = t #debug
+                                # if round == round_number: #debug
+                                    # printed = True #debug
+                                    # print_key_and_weight(key, weight) #debug
+                            # if not printed: #debug
+                                # break #debug
+                            # round_number += 1 #debug
 
                 # self.print() #debug
 
@@ -1171,8 +1219,6 @@ class Correlator:
                 # start = time.perf_counter() #debug
 
                 fuzzy_matches = []
-                # fuzzy_boiler.name = "fuzzy boiler" #debug
-                # fuzzy_boiler.print = self.print #debug
 
                 for subkey_a in fuzzy_a[fuzzy_type]:
                     for subkey_b in fuzzy_b[fuzzy_type]:
@@ -1206,6 +1252,8 @@ class Correlator:
                 if len(fuzzy_matches) > 1:
                     fuzzy_matches.sort(key=lambda x : x.sort_by)
                     fuzzy_boiler = MatchBoiler(fuzzy_matches)
+                    # fuzzy_boiler.name = "fuzzy boiler" #debug
+                    # fuzzy_boiler.print = self.print #debug
                     fuzzy_matches = fuzzy_boiler()[0]
 
                 # end = time.perf_counter() #debug

@@ -1056,7 +1056,7 @@ keys adds `1.0` to `possible_a` and `possible_b` respectively.
 Modifiers like weights are ignored when computing `score_ratio_bonus`.
 
 
-### Choosing Which Matches To Keep: The "Greedy Algorith" And The "Match Boiler"
+### Choosing Which Matches To Keep: The "Greedy Algorithm" And The "Match Boiler"
 
 Here's the abstract problem: if you're presented with
 a list of match objects called `matches`,
@@ -1507,8 +1507,8 @@ solves maps perfectly onto the stable matching problem.  **correlate**solves a p
 2. different, and
 3. harder.
 
-I think it *could* use Gale-Shapley, but that wouldn't be guaranteed to produce optimal results...
-and it's more expensive than my "greedy" algorithm.
+For inputs that are valid for both Gail-Shapley and **correlate**, I assert that both
+algorithms will return the same results, but **correlate** will be faster.
 
 In all the following examples, `A`, `B`, and `C` are values in `dataset_a` (aka "men") and `X`, `Y`, and `Z` are values
 in `dataset_b` (aka "women").  The expression `A: XY` means "`A` prefers `X` to `Y`". The expression `A:X=1.5` means
@@ -1541,7 +1541,8 @@ just can't *happen* with **correlate**, because it uses scores to establish its 
 There are nine possible pairings with those six values. It's impossible to assign a unique score to each of those nine
 pairings such that the preferences of each value match those constraints.
 
-(I know--I tried. I wrote a brute-force program that tried every combination. 362,880 attempts later, I declared failure.)
+(I'm certain.  Not only did I work my way through it, I also wrote a brute-force program that tried every
+possible combination. 362,880 attempts later, I declared failure.)
 
 #### How is it different?
 
@@ -1582,25 +1583,25 @@ highest cumulative score.  In thinking about it I haven't been able to propose a
 where it wouldn't.  The problem lies in datasets where two matches have the *same* score--which
 the original Gale-Shapley algorithm doesn't allow.
 
-Ensuring that **correlate**, when faced with multiple
-matches with the same score, returns the highest cumulative score, required adding the
-sophisticated recursive step to the "match boiler".  We'd have to make a similar modification
-to Gale-Shapley, giving it a recursive step.  Since Gale-Shapley is `O(N**2)`, the modified
-version would be `O(N**3)`.
+Ensuring that **correlate** returns the highest cumulative score in this situation
+required adding the sophisticated recursive step to the "match boiler".  We'd have to make
+a similar modification to Gale-Shapley, giving it a recursive step.  Gale-Shapley is
+already `O(N**2)`; the modified version would be `O(N**3)`.
+(But, like **correlate**, this worst-case shouldn't happen with real-world data.)
 
 #### Mapping Gale-Shapley To The Correlate Greedy Algorithm
 
-Again, the inputs for **correlate** and Gale-Shapley aren't exactly the
-same.  But they have a lot of overlap.  Both **correlate** and an
-unmodified Gale-Shapley can handle the same set of inputs, provided that
+Again, the set of valid inputs for **correlate** and Gale-Shapley aren't
+exactly the same.  But there's a lot of overlap.  Both algorithms can
+handle an input where:
 
 * every match between a man `A` and a woman `X` is assigned a numerical score,
 
-* that every operation involving any particular man `A` has a unique score,
+* every operation involving any particular man `A` has a unique score,
 
 * and also for every woman `X`,
 
-* and that there are exactly as many men as there are women.
+* and there are exactly as many men as there are women.
 
 
 I assert that, for these mutually acceptable inputs, both algorithms
@@ -1676,10 +1677,16 @@ highest preference for `B` and `Y`, where `Y` did not jilt,
 and where `B` would not have asked yet.
 
 This list of operations is now the operations performed by
-the **correlate** "greedy" algorithm.  It sorts the matches
-by score, then iterates down it.  For every man `A` and woman
-`X`, if neither `A` nor `X` has been matched yet, it matches
-`A` and `X` and remembers that they've been matched.
+the **correlate** "greedy" algorithm, more or less.  It sorts
+the matches by score, then iterates down it.  For every man `A`
+and woman `X`, if neither `A` nor `X` has been matched yet,
+it matches `A` and `X` and remembers that they've been matched.
+
+It's possible that there's minor variation in the list of
+operations; any operation involving any man or any woman
+*after* they've been matched with a *yes* is extraneous.
+So you can add or remove them all you like without affecting
+the results.
 
 
 ## Version History
