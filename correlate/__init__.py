@@ -18,8 +18,6 @@ keys from both datasets, with tunable heuristics.
 
 # TODO:
 #   * clean up todo list before checking in!
-#   * add CorrelateResult.statistics
-#          result.statistics['total matches'] = len(match array before boiling)
 #   * test: test grouper_reuse_a and grouper_reuse_b
 #   * test: test regression fixed by grouper
 #             if grouper returns groups of length [1, 2, 3, 4]
@@ -834,6 +832,7 @@ class Correlator:
             self.dataset_a,
             self.dataset_b,
             ]
+        self.statistics = {}
         self.print = print
         self._fuzzy_score_cache = defaultdict(defaultdict_none)
         # self._match_boiler_times = [] #debug
@@ -1410,6 +1409,7 @@ class Correlator:
             else:
                 matches = []
 
+            total_matches = len(matches)
             # start = time.perf_counter() #debug
             boiler = MatchBoiler(matches=matches, reuse_a=reuse_a, reuse_b=reuse_b)
             # boiler.print = self.print #debug
@@ -1424,7 +1424,7 @@ class Correlator:
                 # clipped_score = f"{clipped_score_integer}{dot}{clipped_score_fraction[:4]}" #debug
                 # self.print(f"    {correlations.name}:") #debug
                 # self.print(f"        cumulative_score {clipped_score}, {len(matches)} matches, {len(seen_a)} seen_a, {len(seen_b)} seen_b") #debug
-                results.append((cumulative_score, matches, seen_a, seen_b, correlations))
+                results.append((cumulative_score, matches, total_matches, seen_a, seen_b, correlations))
 
         if not results:
             matches = []
@@ -1434,7 +1434,8 @@ class Correlator:
         else:
             results.sort(key=lambda x: x[0])
             # use the highest-scoring correlation
-            cumulative_score, matches, seen_a, seen_b, correlations = results[-1]
+            cumulative_score, matches, total_matches, seen_a, seen_b, correlations = results[-1]
+            self.statistics["total matches"] = total_matches
             # self.print(f"    highest scoring result: {correlations.name!r} = {cumulative_score}") #debug
             unmatched_a = [value for i, value in enumerate(a.values) if i not in seen_a]
             unmatched_b = [value for i, value in enumerate(b.values) if i not in seen_b]
