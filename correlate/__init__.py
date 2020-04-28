@@ -569,11 +569,12 @@ class CorrelatorMatch:
         return hash(self.tuple)
 
 class CorrelatorResult:
-    def __init__(self, matches, unmatched_a, unmatched_b, minimum_score):
+    def __init__(self, matches, unmatched_a, unmatched_b, minimum_score, statistics):
         self.matches = matches
         self.unmatched_a = unmatched_a
         self.unmatched_b = unmatched_b
         self.minimum_score = minimum_score
+        self.statistics = statistics
 
     def __repr__(self):
         return f"<CorrelatorResult {len(self.matches)} matches {len(self.unmatched_a)} unmatched_a {len(self.unmatched_b)} unmatched_b>"
@@ -832,7 +833,6 @@ class Correlator:
             self.dataset_a,
             self.dataset_b,
             ]
-        self.statistics = {}
         self.print = print
         self._fuzzy_score_cache = defaultdict(defaultdict_none)
         # self._match_boiler_times = [] #debug
@@ -959,6 +959,8 @@ class Correlator:
         fuzzy_score_cache = self._fuzzy_score_cache
 
         assert minimum_score >= 0
+
+        statistics = {}
 
         empty_set = set()
         empty_dict = {}
@@ -1435,7 +1437,7 @@ class Correlator:
             results.sort(key=lambda x: x[0])
             # use the highest-scoring correlation
             cumulative_score, matches, total_matches, seen_a, seen_b, correlations = results[-1]
-            self.statistics["total matches"] = total_matches
+            statistics["total matches"] = total_matches
             # self.print(f"    highest scoring result: {correlations.name!r} = {cumulative_score}") #debug
             unmatched_a = [value for i, value in enumerate(a.values) if i not in seen_a]
             unmatched_b = [value for i, value in enumerate(b.values) if i not in seen_b]
@@ -1453,4 +1455,4 @@ class Correlator:
             # total = sum(l) #debug
             # print(f">> {name} cumulative time: {total}") #debug
 
-        return CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score)
+        return CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score, statistics)
