@@ -413,8 +413,6 @@ class MatchBoiler:
             # first, preserve the now-*reversed* order of matching items.
             # why reversed? that's the order in which we want to return them.
             matching_items = list(matching_items)
-            # this one preserves the original order!
-            original_matching_items = list(reversed(matching_items))
 
             # second, we need a place to put all the items from
             # matching_items that we've kept.  the order of items
@@ -482,8 +480,9 @@ class MatchBoiler:
             # with the same highest overall score, and we use the *first*
             # one, we're guaranteed that it's the earliest one from the
             # original matches.
-            ordering_map = {item: i for i, item in enumerate(original_matching_items)}
-            merged_groups.sort(key=ordering_map.get)
+            if len(merged_groups) > 1:
+                ordering_map = {item: i for i, item in enumerate(reversed(matching_items))}
+                merged_groups.sort(key=ordering_map.get)
 
             # self.print(f"{self.indent}        recursing on smallest connected group, length {len(group)}.") #debug
             all_experiment_results = []
@@ -512,6 +511,7 @@ class MatchBoiler:
                 experiment_score = item.score + sum((o.score for o in experiment_results))
                 all_experiment_results.append( (experiment_score, experiment, item, experiment_results, seen_a, seen_b) )
 
+            assert len(all_experiment_results) > 1
             all_experiment_results.sort(key=lambda o: o[0], reverse=True)
             experiment_score, experiment, item, experiment_results, seen_a, seen_b = all_experiment_results[0]
 
@@ -540,8 +540,9 @@ class MatchBoiler:
             assert all([item.score != top_score for item in experiment_results])
 
             # now the clever part: sort kept_items back into the original order!
-            ordering_map = {item: i for i, item in enumerate(matching_items)}
-            kept_items.sort(key=ordering_map.get)
+            if len(kept_items) > 1:
+                ordering_map = {item: i for i, item in enumerate(matching_items)}
+                kept_items.sort(key=ordering_map.get)
 
             results.extend(kept_items)
             results.extend(experiment_results)
