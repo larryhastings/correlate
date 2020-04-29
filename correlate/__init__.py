@@ -18,15 +18,6 @@ keys from both datasets, with tunable heuristics.
 
 # TODO:
 #   * clean up todo list before checking in!
-#   * all input parameters for correlate (except matches) should be statistics
-#   * test: test grouper_reuse_a and grouper_reuse_b
-#   * test: test regression fixed by grouper
-#             if grouper returns groups of length [1, 2, 3, 4]
-#             we were recursing on all the members of the group of length 2
-#             AND THROWING AWAY THE MEMBERS OF GROUPS LENGTHS 3 AND 4
-#             I mean, it should be fixed now.  but that's what tests are for!
-#   * test: write a function that asserts the returned results from correlate are
-#     in the same order as those items were in the original.  call it from every test.
 
 #   * doc: new fuzzy boiler approach
 #       * move streamlined below rounds, because rounds are mostly conceptual at this point
@@ -130,7 +121,8 @@ def grouper(matches):
     grouper iterates over this list, storing them
     into a series of sub-lists where every match object
     has value_a or value_b in common with at least
-    one other match object in that sub-list.
+    one other match object in that sub-list.  matches
+    is not modified.
 
     Returns a list of these sub-lists, sorted by size,
     with the largest sub-lists first.
@@ -568,6 +560,15 @@ class CorrelatorMatch:
 
     def __hash__(self):
         return hash(self.tuple)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.tuple == other.tuple
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class CorrelatorResult:
     def __init__(self, matches, unmatched_a, unmatched_b, minimum_score, statistics):

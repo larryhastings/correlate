@@ -680,13 +680,12 @@ Mathematically:
 > If the implementation is hard to explain, it's a bad idea.
 > --*The Zen Of Python* by Tim Peters
 
-What follows is an exhaustive discourse on the
-implementation of **correlate**.  This is here
+What follows is an exhaustive (and exhausting!) chapter
+on the implementation of **correlate**.  This is here
 partially for posterity, partially because I like
 reading this sort of thing from other people, but
 mostly to make it easier to reaquaint myself with
-the code more easily when I have to fix a bug three
-years from now.
+the code when I have to fix a bug three years from now.
 
 ### The High-Level Overview
 
@@ -944,12 +943,12 @@ making the final math:
 
 ### Fuzzy Keys
 
-Once upon a time, **correlate** was small and beautiful and
-marvelously fast.  But that version could only support exact keys.
+Once upon a time, **correlate** was small and beautiful.
+But that version only supported exact keys.
 By the time fuzzy keys were completely implemented and feature-complete
 and working great, **correlate** was much more complex and... "practical".
 It's because fuzzy keys introduce a lot of complex behavior, resulting in
-tricky scenarios that just couldn't happen with exact keys.
+tricky scenarios that just don't arise with exact keys.
 
 Consider this example:
 
@@ -1677,7 +1676,7 @@ is currently first, and we want to swap them so `Q` is first,
 and if the following conditions are all true:
 
 * The same woman `X` is asked in both `P` and `Q`.
-* In `Q` the woman `X` says *yes.*
+* In `Q` the woman `X` says either *maybe* or *yes.*
 * In `P` the woman `X` says *maybe.*
 
 Then we can swap `P` and `Q` if and only if we change `X`'s
@@ -1700,7 +1699,8 @@ that means that every subsequent operation involving either
 `A` or `X` must be a *no*.
 
 We now iterate down the list to find an operation `Q`
-involving man `B` and woman `Y`. We define `Q` as:
+involving man `B` and woman `Y`. We define `Q` as the
+first operation such that:
 
 * `Q != P`, and therefore `Q` is after `P` in our ordered list of operations,
 * `B != A`, and
@@ -1758,19 +1758,19 @@ and only recursively check each of those,
 rather than all possibly-connected matches with the same score.
 
 Removed `key_reuse_penalty_factor`.
-In the early days of **correlate**, I thought redundant keys were uninteresting.
-Initially **correlate** didn't even understand rounds; if you mapped the same
-key to the same value twice, it only retained one mapping (the one with the
-higher weight).  Later I added rounds, but they didn't seem to add much signal.
-So I added `key_reuse_penalty_factor`, so you could turn it down, in case it
-was adding more noise than signal.
+In the early days of **correlate**, it didn't understand rounds; if you mapped the same
+key to the same value twice, it only remembered one mapping, the one with the
+highest weight.  Later I added rounds but they didn't seem to add much signal.
+I thought redundant keys were uninteresting.  So I added `key_reuse_penalty_factor`.
+That let you turn down the signal they provided, in case it
+was adding more noise than actual useful signal.
 It wasn't until the realization that `key->value` in round 0 and `key->value`
 in round 1 were conceptually *two different keys* that I really understood
 how redundant mappings of the same key to the same value should work.  And
 once rounds maintained distinct counts of `keys / scores` for the scoring
-formula, redundant keys in different rounds became *way* more informative
-to the final score.   I now think `key_reuse_penalty_factor` is dumb and worse
-than useless and I've removed it.  If you think `key_reuse_penalty_factor` is useful,
+formula, redundant keys in different rounds became *way* more informative.
+I now think `key_reuse_penalty_factor` is dumb and worse than useless and
+I've removed it.  If you think `key_reuse_penalty_factor` is useful,
 please contact me and tell me why!  Or, quietly just pre-multiply it into
 your weights.
 

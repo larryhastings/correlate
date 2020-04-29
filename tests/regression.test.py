@@ -33,6 +33,26 @@ def pprint(name, o):
         print("    " + line.rstrip())
 
 
+def check_results_order(matches, result):
+    """
+    Checks that the items in result are in the
+    same order they are in matches.
+    This confirms that the boiler is stable.
+    """
+    m = list(matches)
+    r = list(reversed(result))
+    while m:
+        if r and (r[-1] == m[-1]):
+            r.pop()
+        m.pop()
+    if r:
+        print("check_results_order failure!")
+        matches = list(matches)
+        print(f"    {matches=}")
+        result = list(reversed(result))
+        print(f"    {result=}")
+        assert not r
+
 
 def smoke_test(verbose):
     """
@@ -228,9 +248,10 @@ def fuzzy_matches_stress_test(verbose):
 def boiler_test_driver(matches, verbose):
     if verbose:
         pprint("matches", matches)
+    matches = list(matches)
+    sort_matches(matches)
     boiler = MatchBoiler()
     boiler.matches = list(matches)
-    sort_matches(boiler.matches)
     result, seen_a, seen_b = boiler()
     if verbose:
         pprint("result", result)
@@ -238,6 +259,7 @@ def boiler_test_driver(matches, verbose):
     if verbose:
         print(f"{cumulative_score=}")
         print()
+    check_results_order(matches, result)
     return cumulative_score, result, seen_a, seen_b
 
 
@@ -278,6 +300,44 @@ def match_boiler_test(verbose):
         verbose)
 
 
+test_groups = [
+    [
+        CorrelatorMatch("a1", "b11", 5),
+        CorrelatorMatch("a1", "b12", 5),
+        CorrelatorMatch("a1", "b13", 5),
+        CorrelatorMatch("a1", "b14", 5),
+        CorrelatorMatch("a1", "b15", 5),
+    ],
+
+    [
+        CorrelatorMatch("a21", "b21", 5),
+        CorrelatorMatch("a22", "b21", 5),
+        CorrelatorMatch("a23", "b21", 5),
+    ],
+
+    [
+        CorrelatorMatch("a3", "b31", 5),
+        CorrelatorMatch("a3", "b32", 5),
+    ],
+
+    [
+        CorrelatorMatch("a4", "b41", 5),
+    ],
+
+    [
+        CorrelatorMatch("a5", "b51", 5),
+    ],
+
+    [
+        CorrelatorMatch("a6", "b61", 5),
+    ],
+]
+
+test_matches = []
+for x in test_groups:
+    test_matches.extend(x)
+
+
 def match_boiler_2_test(verbose):
     """
     Bugfix (for 0.6.1): if there were multiple
@@ -286,33 +346,45 @@ def match_boiler_2_test(verbose):
     be kept--the rest were accidentally discarded.
     """
     scrambler = random.Random(0x12345678)
+    matches = list(test_matches)
     for i in range(10):
-        matches = [
-            CorrelatorMatch("a1", "b11", 5),
-            CorrelatorMatch("a1", "b12", 5),
-            CorrelatorMatch("a1", "b13", 5),
-            CorrelatorMatch("a1", "b14", 5),
-            CorrelatorMatch("a1", "b15", 5),
-
-            CorrelatorMatch("a21", "b21", 5),
-            CorrelatorMatch("a22", "b21", 5),
-            CorrelatorMatch("a23", "b21", 5),
-
-            CorrelatorMatch("a3", "b31", 5),
-            CorrelatorMatch("a3", "b32", 5),
-
-            CorrelatorMatch("a4", "b41", 5),
-
-            CorrelatorMatch("a5", "b51", 5),
-
-            CorrelatorMatch("a6", "b61", 5),
-            ]
         random.shuffle(matches)
-
         score, result, a, b = boiler_test_driver(matches, verbose)
         # pprint("matches", matches)
         # pprint("result", result)
         assert len(result) == 6, f"should be 6, but {len(result)=}!"
+
+
+def make_reuse_test_result(matches, swap_a_for_b=False):
+    groups = []
+    group = None
+    last_a = None
+    for match in matches:
+        new_group = last_a != match.value_a
+        last_a = match.value_a
+
+        if swap_a_for_b:
+            match = CorrelatorMatch(match.value_b, match.value_a, match.score)
+
+        if new_group:
+            group = []
+            groups.append(group)
+        group.append(match)
+    groups.sort(key=len, reverse=True)
+    return groups
+
+
+def grouper_test(verbose):
+    result = grouper(test_matches)
+    assert result == test_groups
+
+def grouper_reuse_a_test(verbose):
+    result = grouper_reuse_a([CorrelatorMatch(x.value_b, x.value_a, x.score) for x in test_matches])
+    assert result == make_reuse_test_result(test_matches, swap_a_for_b=True)
+
+def grouper_reuse_b_test(verbose):
+    result = grouper_reuse_b(test_matches)
+    assert result == make_reuse_test_result(test_matches)
 
 
 ##
