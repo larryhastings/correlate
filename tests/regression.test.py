@@ -262,26 +262,35 @@ def boiler_test_driver(matches, verbose):
     check_results_order(matches, result)
     return cumulative_score, result, seen_a, seen_b
 
+def permute_matches(name, matches, verbose):
+    results = []
+    _verbose = verbose
+    unique_sorted_orders = set()
+    for permutation in itertools.permutations(matches):
+        l = list(permutation)
+        sort_matches(l)
+        unique_sorted_orders.add(tuple(l))
+
+    permutations = list(unique_sorted_orders)
+    permutations.sort()
+    for i, permutation in enumerate(permutations, 1):
+        if verbose:
+            print(f"{name} test {i}/{len(permutations)}")
+        result = boiler_test_driver(permutation, _verbose)
+        results.append(result)
+        if _verbose:
+            _verbose -= 1
+
+    first_result = results[0]
+    assert all(result == first_result for result in results), f"all results should be the same!  {results=}"
+    if verbose:
+        print()
+    return first_result
+
 
 def match_boiler_test(verbose):
-    def permuted_matches_test(name, matches, verbose):
-        results = []
-        _verbose = verbose
-        permutations = list(itertools.permutations(matches))
-        for i, permutation in enumerate(permutations, 1):
-            if verbose:
-                print(f"{name} test {i}/{len(permutations)}")
-            result = boiler_test_driver(permutation, _verbose)
-            results.append(result)
-            if _verbose:
-                _verbose -= 1
 
-        first_result = results[0]
-        assert all(result == first_result for result in results), f"all results should be the same!  {results=}"
-        if verbose:
-            print()
-
-    permuted_matches_test("three items",
+    permute_matches("three items",
         [
             CorrelatorMatch("a1", "b1", 1),
             CorrelatorMatch("a2", "b2", 2),
@@ -289,7 +298,7 @@ def match_boiler_test(verbose):
         ],
         verbose)
 
-    permuted_matches_test("five items",
+    permute_matches("five items",
         [
             CorrelatorMatch("a1", "b1", 5),
             CorrelatorMatch("a1", "b2", 5),
@@ -338,6 +347,7 @@ for x in test_groups:
     test_matches.extend(x)
 
 
+
 def match_boiler_2_test(verbose):
     """
     Bugfix (for 0.6.1): if there were multiple
@@ -345,14 +355,34 @@ def match_boiler_2_test(verbose):
     with the same score, only the smallest one would
     be kept--the rest were accidentally discarded.
     """
-    scrambler = random.Random(0x12345678)
-    matches = list(test_matches)
-    for i in range(10):
-        random.shuffle(matches)
-        score, result, a, b = boiler_test_driver(matches, verbose)
-        # pprint("matches", matches)
-        # pprint("result", result)
+
+    # the test is fragile, detect if we broke it
+    for i, length in enumerate((5, 3, 2, 1, 1, 1)):
+        assert len(test_groups[i]) == length
+
+    length_1_groups = list()
+    for x in test_groups[3:]:
+        length_1_groups.append(x[0])
+    _verbose = verbose
+    test_data = set()
+    for group0 in itertools.permutations(test_groups[0]):
+        for group1 in itertools.permutations(test_groups[1]):
+            for group2 in itertools.permutations(test_groups[2]):
+                matches = list(length_1_groups)
+                matches.extend(group0)
+                matches.extend(group1)
+                matches.extend(group2)
+                test_data.add(tuple(matches))
+
+    test_data = list(test_data)
+    test_data.sort()
+    for i, matches in enumerate(test_data, 1):
+        if verbose and (not i % 100):
+            print(f"match_boiler_2 test {i}/{len(test_data)}")
+        cumulative_score, result, seen_a, seen_b = boiler_test_driver(matches, _verbose)
         assert len(result) == 6, f"should be 6, but {len(result)=}!"
+        if _verbose:
+            _verbose -= 1
 
 
 def make_reuse_test_result(matches, swap_a_for_b=False):

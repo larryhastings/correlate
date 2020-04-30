@@ -30,28 +30,28 @@ correlation by hand too?
 two messy but strongly-related datasets.
 
 How it works: you submit your two datasets to
-**correlate**, showing it each value and the "keys" that map to that value.
-You then set it to work.  It thinks for a while, then produces its best
-guess as to how to match the two sets.  And its best guess is... hey, that's
-pretty good!
+**correlate**, showing it each value and mining the data and metadata for
+"keys" that map to that value.  You then set it to work.  It thinks for a while,
+then produces its best guess as to how to match the two sets.
+And its best guess is... hey, that's pretty good!
 
-In essense, **correlate** uses the uniqueness of keys as clues to pair up
+In essense, **correlate** uses the uniqueness of keys as clues to find
 its matches.  If there's a key present in both datasets, but it only maps
 to one value in each dataset, odds are good that those two values
-are an excellent match.
+should be matched together.
 
-That's the basics, but **correlate** supports some advanced features:
+That's the basics.  **correlate** also supports some advanced features:
 
 * A key mapping can optionally specify a *weight*.
 * You can map a key *multiple times.*
 * Keys can be *fuzzy keys,* keys that may only partially match each other.
-* The order of values can inform the matches.  This is called *ranking.*
+* The order of values can inform the matches; **correlate** calls this *ranking.*
 
 ### Quick Start
 
 This code:
 
-    import correlate
+import correlate
 
     c = correlate.Correlator()
     a, b = c.datasets
@@ -70,14 +70,14 @@ This code:
 
     result = c.correlate()
     for match in result.matches:
-        print(f"{match.score:1.3f} {match.value_a} -> {match.value_b}")
+        print(f"{match.score:1.3f} {match.value_a:>5} -> {match.value_b}")
 
 produces this output:
 
-    5.750 greg -> Greg
+    5.750  greg -> Greg
     3.800 steve -> Steve
     1.286 carol -> Carol
-    1.222 tony -> Tony
+    1.222  tony -> Tony
 
 
 ### A Real-Life Example
@@ -208,19 +208,19 @@ behavior:
 
 ## Sample Code And infer_mv
 
-If you want to get a feel for what it's like to work with **correlate**,
-the package ships with some sample code you can inspect.  Take a look
+**correlate** ships with some sample code for you to read,
+to get a feel for what it's like to work with.  Take a look
 at the scripts in the `tests` and `utilities` directories.
 
 In particular, `utilities` contains a script called `infer_mv`.
 `infer_mv` takes a source directory and a list of files and directories
 to rename, and produces a mapping from the former to the latter.
 In other words, when you run it, you're saying
-"here's a source directory and a list of files and directories to rename.
+*"here's a source directory and a list of files and directories to rename.
 For each file in the list of things to rename, find the
 filename in the source directory that most closely resembles that file,
 and rename the file so it's exactly like that other filename from the
-source directory."  (If you ask `infer_mv` to rename a directory,
+source directory."*  (If you ask `infer_mv` to rename a directory,
 it renames all the files and directories inside that directory, recursively.)
 
 This is useful if, for example, you have a directory where
@@ -396,7 +396,8 @@ as it's only a small optimization, and conditions may change.
 
 `Correlator.print_datasets()`
 
-> Prints both datasets in a human-readable form.  Uses `self.print` to print.
+> Prints both datasets in a human-readable form.  Uses `self.print` to print,
+> which defaults to `print`.
 
 `Correlate.Dataset()`
 
@@ -722,27 +723,6 @@ There are a number of concepts involved with how the **correlate**
 algorithm works, each of which I'll explain in exhausting detail
 in the following sub-sections.
 
-### Streamlined Data
-
-The **correlate** datasets store data in a format designed
-to eliminate redundancy and be easy to modify.  But this representation
-is inconvenient for performing the actual correlate.  Therefore,
-the first step is to reprocess the data into a "streamlined" format.
-This is an internal-only implementation detail, and in fact the data
-is thrown away at the end of each correlation.  As an end-user you'll
-never have to deal with it.  It's only documented here just in case you
-ever need to understand the implementation of **correlate**.
-
-This streamlined data representation is an important optimization.
-It greatly speeds up computing a match between two values.  And it
-only costs a little overhead, compared to all that matching work.
-Consider: if you have 600 values in `dataset_a` and 600 values in
-`dataset_b`, **correlate** will recompute 1,200 streamlined datasets.
-But it'll then use it in as many as 360,000 comparisons!   That's
-why precomputing the streamlined format is such a big win.
-
-Speaking of internal representations of data...
-
 ### Rounds
 
 If you call **correlate** as follows:
@@ -769,6 +749,18 @@ etc.
 Rounds are per-value, and there are as
 many rounds as the maximum number of redundant mappings of
 any single key to any particular value in a dataset.
+
+Naturally, exact keys and fuzzy keys use a different method
+to determine whether or not something is "the same key".
+Technically both types of keys use `==` to determine equivalence.
+However, fuzzy keys don't implement `__eq__`, so Python uses
+its default mechanism to determine equivalence, which is really
+just the `is` operator.  Therefore: exact keys are the same
+if `==` says they're the same, and (in practice) fuzzy keys
+are the same if and only if they're the same object.
+
+(Of course, you could implement `__eq__` when you write
+your own fuzzy subclasses.  I don't know why you would bother.)
 
 Consider this example:
 
@@ -834,6 +826,27 @@ that's a very strong signal indeed!  **correlate** does an
 *excellent* job of noticing unique-ness like that and factoring
 it into the scoring.
 
+### Streamlined Data
+
+The **correlate** datasets store data in a format designed
+to eliminate redundancy and be easy to modify.  But this representation
+is inconvenient for performing the actual correlate.  Therefore,
+the first step is to reprocess the data into a "streamlined" format.
+This is an internal-only implementation detail, and in fact the data
+is thrown away at the end of each correlation.  As an end-user you'll
+never have to deal with it.  It's only documented here just in case you
+ever need to understand the implementation of **correlate**.
+
+This streamlined data representation is an important optimization.
+It greatly speeds up computing a match between two values.  And it
+only costs a little overhead, compared to all that matching work.
+Consider: if you have 600 values in `dataset_a` and 600 values in
+`dataset_b`, **correlate** will recompute 1,200 streamlined datasets.
+But it'll then use it in as many as 360,000 comparisons!   Spending
+a little time precomputing the data in a convenient format saves a
+lot of time in the long run.
+
+
 ### The Scoring Formula, And Conservation Of Score
 
 For each match it considers, **correlate** computes the intersection of
@@ -894,9 +907,15 @@ divided by the number of values they're mapped to *in that round!*
 
 ### Matching And Scoring Exact Keys
 
-The "streamlined" data format for exact keys stores a `set()` for each "round"
-of keys mapping to each value.  **correlate** then computes the set of matching
-keys from each of the two datasets with the marvelously fast `set.intersection()`.
+The "streamlined" data format for exact keys looks like this:
+
+    exact_rounds[index][round] = (set(d), d)
+
+That is, it's indexed by "index" (which represents the value), then
+by round number.  That gives you a tuple containing a dict mapping
+keys to weights, and a `set()` of just the keys.
+**correlate** uses `set.intersection()` (which is super fast!)
+to find the set of exact keys the two values have in common for that round.
 The `len()` of this resulting set is the base cumulative score for that round,
 although that number is only directly useful in computing `hit_ratio_bonus`.
 
@@ -904,7 +923,7 @@ Although **correlate** uses the same scoring formula for both exact keys and
 fuzzy keys in an abstract sense, scoring matches between exact keys is much
 simpler in practice.
 
-First, `key_a` and `key_b` are the same value.  Which means we can rewrite the
+First, `key_a` and `key_b` are the same value.  That means we can rewrite the
 equation slightly:
 
     cumulative_a = the sum of all scores between key_b and all keys in dataset_b
@@ -917,7 +936,7 @@ the same, and `0` otherwise.  If the base `score` for the match is `0`, then the
 `final_score` will be `0` and we can skip all of it.  So we only ever compute
 a `final_score` when `score` is `1`.
 
-Since `score` is only ever used as a multiplier, we can actually ignore it.
+Since `score` is only ever used as a multiplier, we can remove it.
 
 Third, `cumulative_a` and `cumulative_b` are similarly easy to compute.
 They're just the number of times that key is mapped to any value in
@@ -938,6 +957,13 @@ we know `weight_a`, and we can compute `cumulative_b` because it only
 uses terms in `dataset_a`.  So we can pre-compute those terms,
 making the final math:
 
+    # when computing the streamlined data
+    precomputed_a = weight_a / cumulative_b
+    precomputed_b = weight_b / cumulative_a
+
+    # ...
+
+    # when computing the score for a matching exact key
     final_score = precomputed_a * precomputed_b
 
 
@@ -1014,11 +1040,36 @@ exact behavior.)
 After a bunch of rewrites, I found the fastest way to compute fuzzy matches
 was: for each fuzzy type the two values have in common, compute *all possible
 matches* between all fuzzy keys mapping to the two values, even mixing
-between rounds.  Store these matches in an array, sort the array,
-then use the "match boiler" to reduce it down to just the matches that
-survive the multiple rounds above.  The "match boiler" is discussed later;
-for now just assume it's a magic function that does the right thing.
-(Though I had to ensure it was super-stable for this approach to work.)
+between rounds.
+
+The streamlined data for fuzzy keys looks like this:
+
+    fuzzy_types[index][type] = [
+                               [(key1, weight, round#0),  (key1, weight, round#1), ...],
+                               [(key2, weight, round#0),  (key2, weight, round#1), ...],
+                            ]
+
+
+That is, they're indexed by index (a representation of the value),
+then by fuzzy type.  That gets you a list of lists.  Each inner list
+is a list of tuples of
+
+    (key, weight, round_number)
+
+where `key` is always the same in all entries in the list, and
+`round_number` is always the same as that tuple's index in that list.
+
+When computing matches between fuzzy keys, **correlate** takes the
+two lists of lists and does nested `for` loops over them.  Since the
+keys don't change, it only needs to look up the fuzzy score once.
+If the fuzzy score is greater than 0, it stores the match in an
+array.
+
+Once it's done with the fuzzy key matching, it sorts this array of matches,
+then use the "match boiler" to reduce it down so that every per-round key
+is matched at most once.  (The "match boiler" is discussed later; for now
+just assume it's a magic function that does the right thing.  Though I had
+to ensure it was super-stable for this approach to work.)
 
 Sorting these fuzzy key matches was tricky.  They aren't merely sorted
 by score; we also must ensure that fuzzy key matches from earlier rounds
@@ -1034,7 +1085,8 @@ So we sort by a `sort_by` tuple, computed as follows:
 
 The `-lowest_round_number` trick is the very clever bit.  This lets
 us sort with highest values last, which is what the "match boiler" wants.
-But negating it means lower round numbers are now *higher* numbers.
+But negating it means lower round numbers are now *higher* numbers, which
+lets us prefer keys with lower round numbers.
 
 In terms of the abstract scoring formula,
 `score` is the fuzzy score, what's returned by calling the `compare()` method.
@@ -1731,10 +1783,17 @@ the results.
 
 ## Version History
 
-**0.6.2**
+**0.7**
 
 Careful micro-optimizations for both exact and fuzzy key
 code paths have made **correlate** up to 7.5% faster!
+
+The `MatchBoiler` was made even more ridiculously stable.
+It should now always:
+
+* return `results` in the same order they appeared in in `matches`, and
+* prefer the *last* equivalent item when two or more items
+  produce the same cumulative score.
 
 **0.6.1**
 

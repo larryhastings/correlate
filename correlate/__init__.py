@@ -17,14 +17,6 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
-#   * clean up todo list before checking in!
-
-#   * doc: new fuzzy boiler approach
-#       * move streamlined below rounds, because rounds are mostly conceptual at this point
-#
-#   * doc
-#       * exact keys go into multiple rounds if == says they're different
-#       * fuzzy keys only go into multiple rounds iff "is" says they're different
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
@@ -55,7 +47,7 @@ import pprint
 import string
 import time
 
-__version__ = "0.6.1"
+__version__ = "0.7"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -287,7 +279,7 @@ class MatchBoiler:
 
         # self.name = name #debug
         # self.indent = indent #debug
-        # self.print = print #debug
+        self.print = print
 
         self.seen_a = set()
         self.seen_b = set()
@@ -303,9 +295,10 @@ class MatchBoiler:
         copy.seen_a = self.seen_a.copy()
         copy.seen_b = self.seen_b.copy()
         copy.matches = self.matches.copy()
+        copy.print = self.print
+        copy.grouper = self.grouper
         # copy.name = self.name #debug
         # copy.indent = self.indent #debug
-        # copy.print = self.print #debug
         return copy
 
     def _assert_in_ascending_sorted_order(self):
@@ -569,6 +562,12 @@ class CorrelatorMatch:
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __lt__(self, other):
+        if not isinstance(other, self.__class__):
+            raise ValueError("can only compare to other members of " + self.__class__.__name__)
+        return self.tuple < other.tuple
+
+
 
 class CorrelatorResult:
     def __init__(self, matches, unmatched_a, unmatched_b, minimum_score, statistics):
@@ -742,14 +741,12 @@ class Correlator:
             # if no keys, exact_rounds[index] = [] # empty list
             exact_rounds = []
 
-            # fuzzy_types[index][type] = [ [(key, weight, round#), ...], ... ]
-            #                            ^ ^
-            #                            1 2
-            # 2 is a list of tuples where every key is the same, but weight and round differ
-            # 1 is just a list of those.
+            # fuzzy_types[index][type] = [
+            #                              [(key1, weight, round#0),  (key1, weight, round#1), ...],
+            #                              [(key2, weight, round#0),  (key2, weight, round#1), ...],
+            #                            ]
             #
-            # all rounds are merged together
-            # if no keys, fuzzy_types[index][type] won't be set
+            # if there are no keys, fuzzy_types[index][type] won't be set
             fuzzy_types = []
 
             # total_keys[index] = count
