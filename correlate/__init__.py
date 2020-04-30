@@ -17,6 +17,12 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
+#   * more statistics
+#       * time spent in
+#           * match_boiler in fourth pass
+#           * exact key matching
+#           * fuzzy key matching
+#       * ranking method used
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the

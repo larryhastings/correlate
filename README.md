@@ -883,7 +883,7 @@ Two notes before we continue:
 of reasons, the least of which is because we use their
 weights in computing the `final_score`.
 
-* `subtotal_score` is possibly further adjusted by `hit_ratio_bonus`
+* `subtotal_score` is possibly further adjusted by `score_ratio_bonus`
 and ranking, if used, but those will be discussed later.
 
 This formula is how **correlate** assigns a mathematical score to
@@ -921,7 +921,7 @@ keys to weights, and a `set()` of just the keys.
 **correlate** uses `set.intersection()` (which is super fast!)
 to find the set of exact keys the two values have in common for that round.
 The `len()` of this resulting set is the base cumulative score for that round,
-although that number is only directly useful in computing `hit_ratio_bonus`.
+although that number is only directly useful in computing `score_ratio_bonus`.
 
 Although **correlate** uses the same scoring formula for both exact keys and
 fuzzy keys in an abstract sense, scoring matches between exact keys is much
@@ -1172,7 +1172,20 @@ Instead, **correlate** uses a comparatively cheap "greedy"
 algorithm to compute the subset.  Here's the algorithm in a
 nutshell:
 
-* Computing the list of matches, which is *O*(n²).
+* Computing the list of matches, which is *O*(n²).  This is done over
+  four passes:
+    * First pass: compute all matches for all exact and fuzzy keys,
+      and the resulting scores for exact key matches.
+    * Second pass: finish scoring for fuzzy key matches.  (Skipped if
+      there are no fuzzy keys.)
+    * Third pass: compute score_ratio_bonus and ranking bonus/factor for
+      each match.
+      The score for each match is now finalized.
+    * Fourth pass: if not using ranking, or using a specific ranking
+      method, use the "match boiler" to choose which matches to keep.
+      If using ranking and `ranking=BestRanking`, do this for each
+      ranking type and choose the ranking approach with the highest
+      cumulative score.
 * Sort `matches` with highest score first, which is *O*(n log n).
 * The "greedy" algorithm, which is *O*(n):
     * For every match `M` in `matches`:
@@ -1204,12 +1217,12 @@ Here's a specific example:
 * `dataset_b` contains fuzzy keys `fkbH` and `fkbL`.
   Any match containing `fkbH` has a higher score than any match containing `fkbL`.
   (H = high scoring, L = low scoring.)
-* The matches`fka1:fkbH` and `fka2:fkbH` have the same score.
-* The match `fka1:fkbL` has a lower score than `fka2:fkbL`.
+* The matches`fka1->fkbH` and `fka2->fkbH` have the same score.
+* The match `fka1->fkbL` has a lower score than `fka2->fkbL`.
 
-**correlate** should prefer `fka2:fkbL` to `fka1:fkbL`.
+**correlate** should prefer `fka2->fkbL` to `fka1->fkbL`.
 But the greedy algorithm can only pick that match if it
-previously picked `fka1:fkbH`.  And there's no guarantee
+previously picked `fka1->fkbH`.  And there's no guarantee
 that it would!  If two items in the list have the same score,
 it's ambiguous which one the greedy algorithm would choose.
 To handle this properly it needs to look ahead and experiment.
