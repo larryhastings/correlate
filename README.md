@@ -51,7 +51,7 @@ That's the basics.  **correlate** also supports some advanced features:
 
 This code:
 
-import correlate
+    import correlate
 
     c = correlate.Correlator()
     a, b = c.datasets
