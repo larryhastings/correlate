@@ -144,8 +144,6 @@ def main(argv):
             continue
         if verbose:
             print(f'"Yours Truly, Johnny Dollar" test #{i}')
-            pprint.pprint(flags)
-            print()
         t = YTJDTest()
         t.__dict__.update(flags)
         correct, incorrect = t(verbose)
@@ -210,15 +208,25 @@ class YTJDTest:
             if index_a is not None:
                 correct_matches[index_a] = index_b
 
-        start = time.perf_counter()
         result = self.c.correlate(
             ranking_factor=self.ranking_factor,
             minimum_score=self.minimum_score,
             score_ratio_bonus=self.score_ratio_bonus,
             )
-        end = time.perf_counter()
         if verbose:
-            print(f"elapsed time: {end - start} seconds")
+            # pprint.pprint(result.statistics)
+            times = []
+            longest = 0
+            for t in result.statistics.items():
+                name, value = t
+                if name.endswith(" time"):
+                    times.append(t)
+                    longest = max(len(name), longest)
+            times.sort(key=lambda x:x[1], reverse=True)
+            for name, time in times:
+                print(f"    {name:>{longest}} {time:2.6f}")
+            print("   ", result.statistics["ranking used"])
+            # pprint.pprint({key:value for key, value in result.statistics.items() if key.endswith((" time", " used"))})
             print()
 
         correct = 0
@@ -422,7 +430,6 @@ class DateFuzzyKey(correlate.FuzzyKey):
         # else return 0
         delta = self.datetime - other.datetime
         days = abs(delta.days)
-        assert days
         if days <= 5:
             return 1.0 - (days * 0.15)
         if days <= 8:
@@ -452,7 +459,8 @@ class EpisodeFuzzyKey(correlate.FuzzyKey):
         # other.special must be different, and therefore these
         # are definitely different episodes.
         if self.episode == other.episode:
-            assert self.special != other.special
+            if self.special == other.special:
+                return 1.0
             return 0.0
         delta = abs(self.number - other.number)
         if delta >= 5:

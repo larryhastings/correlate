@@ -17,13 +17,6 @@ keys from both datasets, with tunable heuristics.
 """
 
 # TODO:
-#   * more statistics
-#       * time spent in
-#           * match_boiler in fourth pass
-#           * exact key matching
-#           * fuzzy key matching
-#       * ranking method used
-#
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
 #         two rankings for a and b are absolute and should be the same.
@@ -53,7 +46,7 @@ import pprint
 import string
 import time
 
-__version__ = "0.7"
+__version__ = "0.7.1"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -600,11 +593,12 @@ class CorrelatorResult:
             match.score = (match.score - low) / delta
 
 class CorrelatorRankingApproach(enum.IntEnum):
-    InvalidRanking = 0,
+    RankingNotUsed = 0,
     BestRanking = 1,
     AbsoluteRanking = 2,
     RelativeRanking = 3,
 
+RankingNotUsed = CorrelatorRankingApproach.RankingNotUsed
 BestRanking = CorrelatorRankingApproach.BestRanking
 AbsoluteRanking = CorrelatorRankingApproach.AbsoluteRanking
 RelativeRanking = CorrelatorRankingApproach.RelativeRanking
@@ -945,6 +939,8 @@ class Correlator:
             reuse_a=False,
             reuse_b=False,
             ):
+        correlate_start = time.perf_counter()
+
         # self.print(f"correlate(") #debug
         # self.print(f"    {self=}") #debug
         # self.print(f"    {minimum_score=}") #debug
@@ -973,15 +969,22 @@ class Correlator:
             "ranking_factor"    : ranking_factor,
             "reuse_a"           : reuse_a,
             "reuse_b"           : reuse_b,
+            "exact key time"    : 0.0,
+            "fuzzy key time"    : 0.0,
+            "match boiler time" : 0.0,
         }
 
         empty_set = set()
         empty_dict = {}
 
+        start = time.perf_counter()
         all_exact_keys_a, all_fuzzy_keys_a, exact_rounds_a, fuzzy_types_a, total_keys_a = a._precompute_streamlined_data(b)
         all_exact_keys_b, all_fuzzy_keys_b, exact_rounds_b, fuzzy_types_b, total_keys_b = b._precompute_streamlined_data(a)
+        end = time.perf_counter()
+        statistics['precompute streamlined data time'] = end - start
 
-        # self.print() #debug
+
+        # self.print_datasets() #debug
 
         # correlate makes four passes over the list of possible matches.
 
@@ -993,6 +996,8 @@ class Correlator:
         #
         # matches that have a fuzzy score are sent to the "second_pass".
         # matches that don't have a fuzzy score skip the "second_pass" and go straight into the "third_pass".
+
+        start = time.perf_counter()
 
         # here we compute all_indexes, the list of indexes to compute as possible matches.
         # we compute this list as follows:
@@ -1013,49 +1018,55 @@ class Correlator:
         # algorithm more stable and predictable.
         # which means bugs should be stable and predictable, aka reproducable.
 
-        all_indexes = []
+        all_indexes = set()
 
         # only add indexes when they have exact keys in common.
         #
         # you only need to consider round 0, becuase again round N
         # is guaranteed to be a subset of round N-1.
+        start = time.perf_counter()
         exact_keys = all_exact_keys_a & all_exact_keys_b
         for key in exact_keys:
-            all_indexes.extend(itertools.product(a._key_to_index[key][0], b._key_to_index[key][0]))
+            all_indexes.update(itertools.product(a._key_to_index[key][0], b._key_to_index[key][0]))
+        end = time.perf_counter()
+        statistics['compute exact indexes time'] = end - start
 
         # add indexes for values that have fuzzy keys that,
         # when matched, have a fuzzy score > 0.
         # we compute and cache all fuzzy scores here.
+        #
+        # this loop quickly dominate the runtime of correlate
+        # once you use even only a couple fuzzy keys per value.
+        # it may not look it, but this code has been extensively
+        # hand-tuned for speed.
+        start = time.perf_counter()
         for fuzzy_type, fuzzy_keys_a in all_fuzzy_keys_a.items():
             fuzzy_keys_b = all_fuzzy_keys_b.get(fuzzy_type)
             if not fuzzy_keys_b:
                 continue
 
             # technically we should check to see if we've cached the fuzzy score already.
-            # however, it's rare that you actually reuse a fuzzy key.  so it's faster
-            # in the long run to just make the redundant computations, rather than
-            # carefully check for the cache first.
-            for key_a, key_b in itertools.product(fuzzy_keys_a, fuzzy_keys_b):
-                if key_a is key_b:
-                    fuzzy_score = 1.0
-                else:
+            # however, it's rare that any actually reuses a fuzzy key.
+            # it's definitely faster to just make the redundant computations
+            # without checking in the cache first.
+            for key_a in fuzzy_keys_a:
+                score_cache_a = fuzzy_score_cache[key_a]
+                indexes_a = a._key_to_index[key_a][0]
+                for key_b in fuzzy_keys_b:
                     fuzzy_score = key_a.compare(key_b)
-                if fuzzy_score is NotImplemented:
-                    fuzzy_score = key_b.compare(key_a)
-                    if fuzzy_score is NotImplemented:
-                        fuzzy_score = 0
+                    assert 0 <= fuzzy_score <= 1
+                    score_cache_a[key_b] = fuzzy_score
+                    if fuzzy_score:
+                        for index_a in indexes_a:
+                            all_indexes.update([(index_a, index_b) for index_b in b._key_to_index[key_b][0]])
+        end = time.perf_counter()
+        statistics['compute fuzzy indexes time'] = end - start
 
-                assert 0 <= fuzzy_score <= 1
-                fuzzy_score_cache[key_a][key_b] = fuzzy_score
-                if fuzzy_score > 0:
-                    all_indexes.extend(itertools.product(a._key_to_index[key_a][0], b._key_to_index[key_b][0]))
-
+        all_indexes = list(all_indexes)
         all_indexes.sort()
 
-        # clever hack for removing unique elements from a sorted list
-        # Python 3.6+ only
-        # courtesy Raymond Hettinger
-        all_indexes = list(dict.fromkeys(all_indexes))
+        end = time.perf_counter()
+        statistics['compute indexes time'] = end - start
 
 
         # computed during first_pass:
@@ -1119,8 +1130,8 @@ class Correlator:
         fourth_pass = []
 
         class Correlations:
-            def __init__(self, name):
-                self.name = name
+            def __init__(self, id):
+                self.id = id
                 self.matches = []
                 fourth_pass.append(self)
 
@@ -1138,16 +1149,16 @@ class Correlator:
             )
         if using_rankings:
             if ranking in (AbsoluteRanking, BestRanking):
-                absolute_correlations = Correlations("absolute")
+                absolute_correlations = Correlations(AbsoluteRanking)
             if ranking in (RelativeRanking, BestRanking):
-                relative_correlations = Correlations("relative")
+                relative_correlations = Correlations(RelativeRanking)
 
             ranking_range_a = a._highest_ranking - a._lowest_ranking
             ranking_range_b = b._highest_ranking - b._lowest_ranking
             widest_ranking_range = max(ranking_range_a, ranking_range_b)
             one_minus_ranking_factor = 1.0 - ranking_factor
         else:
-            correlations = Correlations("unified")
+            correlations = Correlations(RankingNotUsed)
 
 
         # self.print("[first pass]") #debug
@@ -1160,6 +1171,7 @@ class Correlator:
 
         # index_padding_length = math.floor(math.log10(max(len(dataset.values) for dataset in self.datasets))) #debug
 
+        pass_start = time.perf_counter()
         for indexes in all_indexes:
             index_a, index_b = indexes
 
@@ -1177,6 +1189,7 @@ class Correlator:
             rounds_b = exact_rounds_b[index_b]
 
             i = 0
+            start = time.perf_counter()
             for round_a, round_b in zip(rounds_a, rounds_b):
                 # match_print(indexes, f"    exact round {i+1}") #debug
                 keys_a, weights_a = round_a
@@ -1217,6 +1230,9 @@ class Correlator:
 
                 i += 1
 
+            end = time.perf_counter()
+            delta = end - start
+            statistics["exact key time"] += delta
 
             exact_scores.sort()
             exact_score = sum(exact_scores)
@@ -1242,10 +1258,9 @@ class Correlator:
 
             for fuzzy_type in fuzzy_types_in_common:
 
-                # start = time.perf_counter() #debug
-
                 fuzzy_matches = []
 
+                start = time.perf_counter()
                 for subkey_a in fuzzy_a[fuzzy_type]:
                     for subkey_b in fuzzy_b[fuzzy_type]:
                         fuzzy_score = None
@@ -1264,8 +1279,10 @@ class Correlator:
 
                             weighted_score = (weight_a * weight_b) * fuzzy_score_cubed
 
-                            sorted_rounds = sorted((-round_a, -round_b), reverse=True)
-                            sort_by = (fuzzy_score, *sorted_rounds)
+                            if round_a < round_b:
+                                sort_by = (fuzzy_score, -round_a, -round_b)
+                            else:
+                                sort_by = (fuzzy_score, -round_b, -round_a)
 
                             # match_print(indexes, f"                    weights=({weight_a}, {weight_b}) {weighted_score=}") #debug
                             item = CorrelatorMatch(tuple_a, tuple_b, fuzzy_score)
@@ -1274,7 +1291,11 @@ class Correlator:
                             fuzzy_matches.append(item)
 
                 if len(fuzzy_matches) == 0:
+                    end = time.perf_counter()
+                    delta = end - start
+                    statistics["fuzzy key time"] += delta
                     continue
+
                 if len(fuzzy_matches) > 1:
                     fuzzy_matches.sort(key=lambda x : x.sort_by)
                     fuzzy_boiler = MatchBoiler(fuzzy_matches)
@@ -1282,8 +1303,9 @@ class Correlator:
                     # fuzzy_boiler.print = self.print #debug
                     fuzzy_matches = fuzzy_boiler()[0]
 
-                # end = time.perf_counter() #debug
-                # self._fuzzy_boiler_times.append(end - start) #debug
+                end = time.perf_counter()
+                delta = end - start
+                statistics["fuzzy key time"] += delta
 
                 for item in fuzzy_matches:
                     fuzzy_score, tuple_a, tuple_b = item
@@ -1304,6 +1326,10 @@ class Correlator:
             # match_print(indexes, f"    {len(fuzzy_semifinal_matches)} fuzzy score{plural} added to second pass.") #debug
             # match_print(indexes) #debug
             second_pass.append( ( indexes, exact_scores, cumulative_base_score, fuzzy_semifinal_matches ) )
+
+        pass_end = time.perf_counter()
+        statistics["pass 1 time"] = pass_end - pass_start
+        pass_start = pass_end
 
         # if not second_pass: #debug
             # self.print("[skipping second pass (no fuzzy keys!)]") #debug
@@ -1338,6 +1364,10 @@ class Correlator:
             # match_print(indexes, f"    final {score=}") #debug
             # match_print(indexes) #debug
             third_pass.append( (indexes, score, cumulative_base_score) )
+
+        pass_end = time.perf_counter()
+        statistics["pass 2 time"] = pass_end - pass_start
+        pass_start = pass_end
 
         # self.print("[third pass]") #debug
         # self.print() #debug
@@ -1409,6 +1439,10 @@ class Correlator:
             # s = "\n".join(l) #debug
             # self.print(s) #debug
 
+        pass_end = time.perf_counter()
+        statistics["pass 3 time"] = pass_end - pass_start
+        pass_start = pass_end
+
         # self.print("[fourth pass (choose ranking)]") #debug
         results = []
 
@@ -1425,12 +1459,13 @@ class Correlator:
                 matches = []
 
             total_matches = len(matches)
-            # start = time.perf_counter() #debug
+            start = time.perf_counter()
             boiler = MatchBoiler(matches=matches, reuse_a=reuse_a, reuse_b=reuse_b)
             # boiler.print = self.print #debug
             matches, seen_a, seen_b = boiler()
-            # end = time.perf_counter() #debug
-            # self._match_boiler_times.append(end - start) #debug
+            end = time.perf_counter()
+            delta = end - start
+            statistics["match boiler time"] += delta
 
             cumulative_score = sum(item.score for item in matches)
 
@@ -1440,6 +1475,11 @@ class Correlator:
                 # self.print(f"    {correlations.name}:") #debug
                 # self.print(f"        cumulative_score {clipped_score}, {len(matches)} matches, {len(seen_a)} seen_a, {len(seen_b)} seen_b") #debug
                 results.append((cumulative_score, matches, total_matches, seen_a, seen_b, correlations))
+
+        pass_end = time.perf_counter()
+        statistics["pass 4 time"] = pass_end - pass_start
+        pass_start = pass_end
+
 
         if not results:
             matches = []
@@ -1451,6 +1491,7 @@ class Correlator:
             # use the highest-scoring correlation
             cumulative_score, matches, total_matches, seen_a, seen_b, correlations = results[-1]
             statistics["total matches"] = total_matches
+            statistics["ranking used"] = correlations.id
             # self.print(f"    highest scoring result: {correlations.name!r} = {cumulative_score}") #debug
             unmatched_a = [value for i, value in enumerate(a.values) if i not in seen_a]
             unmatched_b = [value for i, value in enumerate(b.values) if i not in seen_b]
@@ -1468,4 +1509,7 @@ class Correlator:
             # total = sum(l) #debug
             # print(f">> {name} cumulative time: {total}") #debug
 
-        return CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score, statistics)
+        return_value = CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score, statistics)
+        end = time.perf_counter()
+        statistics["elapsed time"] = end - correlate_start
+        return return_value
