@@ -616,6 +616,9 @@ to, with a debugger or with turning on the debug print statements in **correlate
 itself.  Making sure you gave **correlate** the right data can make it not only
 much more accurate, it might make it faster too!
 
+**correlate** provides a function that prints out your datasets in a
+convenient human-readable format: `Correlator.print_dataset()`.
+
 #### Normalize Strings
 
 When using strings as keys from real-world sources, I recommend you
@@ -642,10 +645,6 @@ mediocre matches.
 In general, you want to force your fuzzy matches to extremes.
 Two good techniques:
 
-* Multiply your fuzzy score by itself.  Squaring or even cubing a fuzzy
-  score will preserve high scores and attenuate low scores.
-  Note that the fuzzy scoring algorithm already effectively cubes fuzzy
-  scores, so there's already a certain amount of this going on.
 * Specify a minimum score for fuzzy matches, and replace any fuzzy score
   below that minimum with `0`.
   * Possibly remap the remaining range to the entire range.
@@ -653,6 +652,11 @@ Two good techniques:
     return values from `0.6` to `1`?  Or should you stretch the scores
     over the entire range with `(fuzzy_score - 0.6) / (1 - 0.6)`?
     You may need to experiment with both to find out what works well for you.
+* Multiply your fuzzy score by itself.  Squaring or even cubing a fuzzy
+  score will preserve high scores and attenuate low scores.
+  Note that the scoring algorithm for fuzzy key matches already *cubes*
+  the fuzzy score.  Additional multiplying of the score by itself is
+  probably unnecessary in most cases.
 
 
 ### What Do These Scores Mean?
@@ -684,14 +688,14 @@ Mathematically:
 What follows is an exhaustive (and exhausting!) chapter
 on the implementation of **correlate**.  This is here
 partially for posterity, partially because I like
-reading this sort of thing from other people, but
-mostly to make it easier to reaquaint myself with
+reading this sort of thing in other people's project,
+but mostly to make it easier to reaquaint myself with
 the code when I have to fix a bug three years from now.
 
 ### The High-Level Overview
 
 At the heart of **correlate** is a brute-force algorithm.  It's what
-computer scientists would call an **O**(n²) algorithm.
+computer scientists would call an *O*(n²) algorithm.
 
 **correlate** computes every possible "match"--every mapping of a value in
 `dataset_a` to a value in `dataset_b` where the two values have keys in common.
@@ -790,8 +794,8 @@ And `o2` in `dataset_b` would have only two rounds:
 * Round 0 would contain the keys `{'d', 'e', 'f'}`.
 * Round 1 would contain only one key,`{'d'}`.
 
-And conceptually the `"a"` in round 0 is a different key
-from the `"a"` in round 1, etc.
+Again, conceptually, the `"a"` in round 0 is a different key
+from the `"a"` in round 1, and so on.
 
 For exact keys, rounds are directly matched iteratively
 to each other; the exact keys in round 0 for a value in
@@ -1123,11 +1127,11 @@ Consider this example:
     c.dataset_b.set('breakin', Y)
     c.dataset_b.set_keys(['breakin', '2', 'electric', 'boogaloo'], Z)
 
-Which is the better match, `X:Y` or `X:Z`?
+Which is the better match, `X->Y` or `X->Z`?
 In early versions of **correlate**, both matches got the exact same score.
 So it was the luck of the draw as to which match **correlate** would choose.
 `score_ratio_bonus` disambiguates this scenario.  It awards a larger bonus
-to `X:Y` than it does to `X:Z`,  because a higher percentage of the keys
+to `X->Y` than it does to `X->Z`,  because a higher percentage of the keys
 matched between `X` and `Y`.
 That small boost is usually all that's needed to let **correlate**
 disambiguate these situations and pick the correct match.
@@ -1159,7 +1163,7 @@ such that:
 Finding the perfectly optimal solution would require computing every
 possible set of matches, then computing the cumulative score of that
 set, then keeping the set with the highest score.  Unfortuantely,
-that algorithm is `O(nⁿ)`,
+that algorithm is *O*(nⁿ),
 which is so amazingly expensive that we can't even consider it.
 (You probably want your results from **correlate** before our sun
 turns into a red giant.)
@@ -1168,9 +1172,9 @@ Instead, **correlate** uses a comparatively cheap "greedy"
 algorithm to compute the subset.  Here's the algorithm in a
 nutshell:
 
-* Computing the list of matches, which is `O(n²)`.
-* Sort `matches` with highest score first, which is `O(n log n)`.
-* The "greedy" algorithm, which is `O(n)`:
+* Computing the list of matches, which is *O*(n²).
+* Sort `matches` with highest score first, which is *O*(n log n).
+* The "greedy" algorithm, which is *O*(n):
     * For every match `M` in `matches`:
         * if `value_a` hasn't been matched yet,
         * and `value_b` hasn't been matched yet,
@@ -1178,7 +1182,7 @@ nutshell:
             * remember that `value_a` has been matched,
             * and remember that `value_b` has been matched.
 
-Overall this algorithm is `O(n²)`.  It's not *guaranteed*
+Overall this algorithm is *O*(n²).  It's not *guaranteed*
 to produce the optimal subset, but in practice it should be optimal.
 
 The bad news: late in development of **correlate** I
@@ -1228,7 +1232,7 @@ With the "match boiler" in place, **correlate** seems to produce optimal
 results even in these rare ambigous situations.
 I'm not sure what the *big-O* notation is for the "match boiler".
 The pathological worst case, where every match has the same score,
-is probably on the order of `O(n log n)`, where the `log n` component
+is probably on the order of *O*(n log n), where the `log n` component
 represents the recursive operations.  Even in the pathological worst case,
 where every match has the same score, and they're all connected to
 each other via having `value_a` and `value_b` in common, the recursive step
@@ -1364,7 +1368,7 @@ and `X` is a good match for `A`, and `A` is a good match for `Y`, then,
 by transitivity, in the real world, `B` is probably a good match for `Y`.
 
 So I think this scenario isn't realistic.  And the only way
-to fix it is with the crushingly expensive `O(nⁿ)` algorithm.
+to fix it is with the crushingly expensive *O*(nⁿ) algorithm.
 It's just not worth it.  So, relax!  YAGNI.
 
 
@@ -1678,7 +1682,7 @@ the original Gale-Shapley algorithm doesn't allow.
 Ensuring that **correlate** returns the highest cumulative score in this situation
 required adding the sophisticated recursive step to the "match boiler".  We'd have to make
 a similar modification to Gale-Shapley, giving it a recursive step.  Gale-Shapley is
-already `O(n²)`; I think the modified version would be `O(n² log n)`.
+already *O*(n²); I think the modified version would be *O*(n² log n).
 (But, like **correlate**, this worst-case shouldn't happen with real-world data.)
 Anyway, a modified Gale-Shapley that works for all **correlate** inputs is definitely
 more expensive than what **correlate** has--or what it needs.
