@@ -8,6 +8,7 @@
 # Part of the "correlate" package:
 # http://github.com/larryhastings/correlate
 
+import builtins
 import correlate
 import datetime
 import functools
@@ -22,55 +23,104 @@ from rapidfuzz.fuzz import ratio
 # as observed on my workstation
 tests = [
 
+    # notice: the first three tests don't use fuzzy keys!
+    # look at how crazy fast they are!
+    # they're *10x* faster than the test using all the fuzzy keys.
     {
     "dataset_b": "script_first_pages",
-    "use_fuzzy_search_for_title": False,
-    "use_episode_number_as_ranking": True,
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : False,
+    "use_episode_number_as" : "exact key",
     },
 
     {
     "dataset_b": "best",
-    "use_fuzzy_search_for_title": False,
-    "use_episode_number_as_ranking": True,
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : False,
+    "use_episode_number_as" : "exact key",
+    },
+
+    # this one doesn't work!
+    # it mismatches kamashek 5 to kamashek 4
+    # because the dates line up.
+    #
+    # {
+    # "dataset_b": "script_first_pages",
+    # "use_fuzzy_title": False,
+    # "use_fuzzy_broadcast_date" : False,
+    # "use_episode_number_as" : "ranking",
+    # },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : False,
+    "use_episode_number_as" : "ranking",
     },
 
     {
     "dataset_b": "script_first_pages",
-    "use_fuzzy_search_for_title": False,
-    "use_episode_number_as_ranking": False,
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "ranking",
+    },
+
+    {
+    "dataset_b": "best",
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "ranking",
+    },
+
+    {
+    "dataset_b": "script_first_pages",
     "minimum_score": 0.2,
+
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "fuzzy key",
     },
 
     {
     "dataset_b": "best",
-    "use_fuzzy_search_for_title": False,
-    "use_episode_number_as_ranking": False,
+
+    "use_fuzzy_title": False,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "fuzzy key",
     },
 
     {
     "dataset_b": "script_first_pages",
-    "use_fuzzy_search_for_title": True,
-    "use_episode_number_as_ranking": True,
     "minimum_score": 0.1,
+
+    "use_fuzzy_title": True,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "ranking",
     },
 
     {
     "dataset_b": "best",
-    "use_fuzzy_search_for_title": True,
-    "use_episode_number_as_ranking": True,
+
+    "use_fuzzy_title": True,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "ranking",
     },
 
     {
     "dataset_b": "script_first_pages",
-    "use_fuzzy_search_for_title": True,
-    "use_episode_number_as_ranking": False,
     "minimum_score": 0.2,
+
+    "use_fuzzy_title": True,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "fuzzy key",
     },
 
     {
     "dataset_b": "best",
-    "use_fuzzy_search_for_title": True,
-    "use_episode_number_as_ranking": False,
+
+    "use_fuzzy_title": True,
+    "use_fuzzy_broadcast_date" : True,
+    "use_episode_number_as" : "fuzzy key",
     },
 
 ]
@@ -162,20 +212,20 @@ class YTJDTest:
         self.dataset_a=None
         self.dataset_b=None
 
-        self.use_fuzzy_search_for_title = False
+        self.use_fuzzy_title = True
+        self.use_fuzzy_broadcast_date = True
+        self.use_episode_number_as = "ranking"
 
-        # when use_fuzzy_search_for_title is False:
+        # when use_fuzzy_title is False:
         self.exact_title_key_weight = 1
 
-        # when use_fuzzy_search_for_title is True:
+        # when use_fuzzy_title is True:
         self.fuzzy_title_weight = 8
         self.fuzzy_title_minimum_score = 0.5
 
         self.episode_date_weight = 1
 
-        self.use_episode_number_as_ranking = True
-
-        # when use_episode_number_as_ranking is False:
+        # when use_episode_number_as == "fuzzy key":
         self.episode_number_weight = 1
 
         self.score_ratio_bonus = 0.5
@@ -193,7 +243,7 @@ class YTJDTest:
             "script_first_pages": self.dataset_script_first_pages,
         }
 
-        if not self.use_episode_number_as_ranking:
+        if not self.use_episode_number_as == "ranking":
             self.ranking_factor = 0.0
 
         self.dataset_a = self.dataset_a or "database"
@@ -208,6 +258,7 @@ class YTJDTest:
             if index_a is not None:
                 correct_matches[index_a] = index_b
 
+        # self.c.print_datasets()
         result = self.c.correlate(
             ranking_factor=self.ranking_factor,
             minimum_score=self.minimum_score,
@@ -321,15 +372,18 @@ class YTJDTest:
         # line = line.lower().strip()
 
         def set_episode_number(number, value):
-            if self.use_episode_number_as_ranking:
+            if self.use_episode_number_as == "ranking":
                 delta = 0
                 if number.startswith("s"):
                     number = number[1:]
                     delta = 1000
                 dataset.value(value, ranking=int(number) + delta)
-            else:
+            elif self.use_episode_number_as == "fuzzy key":
                 episode = EpisodeFuzzyKey(number)
                 dataset.set(episode, value, weight=self.episode_number_weight)
+            else:
+                assert self.use_episode_number_as in ("exact key", "key")
+                dataset.set(number, value, 0.5)
 
         fields = line.split(" - ")
         for field in fields:
@@ -342,9 +396,11 @@ class YTJDTest:
                     field = field.strip()
 
                 broadcast_date = field
-                date = DateFuzzyKey(broadcast_date)
-                dataset.set(date, original_line, weight=self.episode_date_weight)
-                # dataset.set(broadcast_date, original_line, weight=1)
+                if self.use_fuzzy_broadcast_date:
+                    date = DateFuzzyKey(broadcast_date)
+                    dataset.set(date, original_line, weight=self.episode_date_weight)
+                else:
+                    dataset.set(broadcast_date, original_line, 0.5)
                 continue
 
             if field.startswith("s") and is_int(field[1:]):
@@ -353,19 +409,11 @@ class YTJDTest:
                 continue
 
             if is_int(field):
+                number = int(field)
                 set_episode_number(field, original_line)
-                # episode_number = int(field)
-                # use_episode_number = episode_number >= 10
-                # # remove leading zeroes
-                # episode_number = str(episode_number)
-                # if use_episode_number:
-                #     # episode numbers less than 10 can result in bad matches,
-                #     # there are occasional random single-digit numbers floating
-                #     # around in the data
-                #     dataset.set(episode_number, original_line, weight=0.5)
                 continue
 
-            if self.use_fuzzy_search_for_title:
+            if self.use_fuzzy_title:
                 # split alternate titles into separate fuzzy keys
                 for subtitle in field.split(" aka "):
                     # print(f"    string used for fuzzy match {field!r}")
@@ -376,9 +424,10 @@ class YTJDTest:
                 # don't remove dashes until now, it messes up dates, etc
                 field = field.replace("-", " ")
                 field = field.replace("aka", " ")
-                dataset.set_keys(field.lower().split(), original_line, weight=self.exact_title_key_weight)
-
-
+                keys = field.lower().split()
+                weight = weight=self.exact_title_key_weight
+                dataset.set_keys(keys, original_line, weight)
+                continue
 
 
 def is_int(s):
@@ -451,13 +500,6 @@ class EpisodeFuzzyKey(correlate.FuzzyKey):
         self.number = int(episode)
 
     def compare(self, other):
-        # fuzzy key supports guarantee that
-        # we'll never call compare if "self is other".
-        # so by definition self and other are different keys.
-        # and since we use an lru cache that keys on the inputs,
-        # if self.episode == other.episode, then self.special and
-        # other.special must be different, and therefore these
-        # are definitely different episodes.
         if self.episode == other.episode:
             if self.special == other.special:
                 return 1.0
