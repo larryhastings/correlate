@@ -23,33 +23,18 @@ from rapidfuzz.fuzz import ratio
 # as observed on my workstation
 tests = [
 
-    # notice: the first three tests don't use fuzzy keys!
+    # notice: the first two tests don't use fuzzy keys!
     # look at how crazy fast they are!
-    # they're *10x* faster than the test using all the fuzzy keys.
-    {
-    "dataset_b": "script_first_pages",
-    "use_fuzzy_title": False,
-    "use_fuzzy_broadcast_date" : False,
-    "use_episode_number_as" : "exact key",
-    },
-
+    #
+    # on my computer, this first test is 14x faster
+    # than the slowest test using the "best" corpus.
+    # (see?  fuzzy keys make everything slow!)
     {
     "dataset_b": "best",
     "use_fuzzy_title": False,
     "use_fuzzy_broadcast_date" : False,
     "use_episode_number_as" : "exact key",
     },
-
-    # this one doesn't work!
-    # it mismatches kamashek 5 to kamashek 4
-    # because the dates line up.
-    #
-    # {
-    # "dataset_b": "script_first_pages",
-    # "use_fuzzy_title": False,
-    # "use_fuzzy_broadcast_date" : False,
-    # "use_episode_number_as" : "ranking",
-    # },
 
     {
     "dataset_b": "best",
@@ -189,9 +174,11 @@ def main(argv):
         start = 0
 
     failures = 0
+    tests_run = 0
     for i, flags in enumerate(tests, 1):
         if not (start <= i <= end):
             continue
+        tests_run += 1
         if verbose:
             print(f'"Yours Truly, Johnny Dollar" test #{i}')
         t = YTJDTest()
@@ -201,7 +188,7 @@ def main(argv):
             print(f"Test #{i} had {correct} correct matches and {incorrect} matching failures!")
             failures += 1
     if failures:
-        print(f"{failures} tests out of {len(tests)} failed.")
+        print(f"{failures} tests out of {tests_run} failed.")
     else:
         print("All tests passed.")
     return 0
