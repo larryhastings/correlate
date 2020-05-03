@@ -732,7 +732,7 @@ in the following sub-sections.
 
 Here's a high-level overview of how **correlate** performs
 one correlation.
-**correlate** makes five passes over various sets of data.
+**correlate** makes six passes over various sets of data.
 
 **Pass 1**
 
