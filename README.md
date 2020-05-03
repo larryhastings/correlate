@@ -727,6 +727,73 @@ There are a number of concepts involved with how the **correlate**
 algorithm works, each of which I'll explain in exhausting detail
 in the following sub-sections.
 
+
+## **correlate's** Six Passes And Big-O Complexity
+
+Here's a high-level overview of how **correlate** performs
+one correlation.
+**correlate** makes five passes over various sets of data.
+
+**Pass 1**
+
+> Iterate over both datasets and compute the "streamlined"
+> data.
+>
+> *Complexity:* *O*(n)
+
+
+**Pass 2**
+
+> Iterate over all keys and compute a sorted list of all matches
+> that have a nonzero score.  (The list represents a match with
+> a pair of indices into the lists of values for each dataset.)
+> This pass also performs all fuzzy key comparisons and caches
+> their results.
+>
+> *Complexity:* *O*(n²), for the fuzzy key comparisons step
+
+**Pass 3**
+
+> For every match with a nonzero score,
+> compute subtotals for matching all fuzzy keys.
+> We need to add some of these together to compute the final
+> scores for fuzzy key matches.
+>
+> *Complexity:* *O*(n²)
+
+**Pass 4**
+
+> For every match with a nonzero score:
+>
+> * compute the scores for matching all exact keys,
+> * finalize the scores for fuzzy key match scores,
+> * compute the bonuses (score_ratio_bonus, ranking),
+> * and store the result per-ranking.
+>
+> The score for each match is now finalized.
+>
+> *Complexity:* *O*(n²)
+
+**Pass 5**
+
+> For every ranking approach being used,
+> compute the final list of successful matches,
+> using the "match boiler" and "greedy algorithm".
+>
+> *Complexity:* *O*(n log n) (approximate)
+
+**Pass 6**
+
+> Choose the highest-scoring ranking approach,
+> compute unseen_a and unseen_b,
+> and back-substitute the "indexes" with their actual values
+> before returning.
+>
+> *Complexity:* *O*(n)
+
+Thus the big-O notation for **correlate** overall is *O*(n²).
+
+
 ### Rounds
 
 If you call **correlate** as follows:
@@ -1166,37 +1233,21 @@ set, then keeping the set with the highest score.  Unfortuantely,
 that algorithm is *O*(nⁿ),
 which is so amazingly expensive that we can't even consider it.
 (You probably want your results from **correlate** before our sun
-turns into a red giant.)
+turns into a red giant.)  Instead, **correlate** uses a
+comparatively cheap "greedy" algorithm to compute the subset.
 
-Instead, **correlate** uses a comparatively cheap "greedy"
-algorithm to compute the subset.  Here's the algorithm in a
-nutshell:
+Here's a short description of the **correlate** "greedy" algorithm:
 
-* Computing the list of matches, which is *O*(n²).  This is done over
-  four passes:
-    * First pass: compute all matches for all exact and fuzzy keys,
-      and the resulting scores for exact key matches.
-    * Second pass: finish scoring for fuzzy key matches.  (Skipped if
-      there are no fuzzy keys.)
-    * Third pass: compute score_ratio_bonus and ranking bonus/factor for
-      each match.
-      The score for each match is now finalized.
-    * Fourth pass: if not using ranking, or using a specific ranking
-      method, use the "match boiler" to choose which matches to keep.
-      If using ranking and `ranking=BestRanking`, do this for each
-      ranking type and choose the ranking approach with the highest
-      cumulative score.
-* Sort `matches` with highest score first, which is *O*(n log n).
-* The "greedy" algorithm, which is *O*(n):
-    * For every match `M` in `matches`:
-        * if `value_a` hasn't been matched yet,
-        * and `value_b` hasn't been matched yet,
-            * keep `M` as a good match,
-            * remember that `value_a` has been matched,
-            * and remember that `value_b` has been matched.
+* For every match `M` in `matches`:
+    * if `value_a` hasn't been matched yet,
+    * and `value_b` hasn't been matched yet,
+        * keep `M` as a good match,
+        * remember that `value_a` has been matched,
+        * and remember that `value_b` has been matched.
 
-Overall this algorithm is *O*(n²).  It's not *guaranteed*
-to produce the optimal subset, but in practice it should be optimal.
+This algorithm is *O*(n).  It's not *guaranteed*
+to produce the optimal subset, but in practice it
+should be optimal.
 
 The bad news: late in development of **correlate** I
 realized there was a corner case where odds are good the
@@ -1246,20 +1297,27 @@ results even in these rare ambigous situations.
 I'm not sure what the *big-O* notation is for the "match boiler".
 The pathological worst case, where every match has the same score,
 is probably on the order of *O*(n log n), where the `log n` component
-represents the recursive operations.  Even in the pathological worst case,
+represents the recursive operations.
+
+Even in the pathological worst case,
 where every match has the same score, and they're all connected to
-each other via having `value_a` and `value_b` in common, the recursive step
-would still tend to cut the group in half, cutting down the number of
-recursive steps to `log n`.
+each other via having `value_a` and `value_b` in common, I don't think
+the "match boiler" gets to *O*(n²).
+The thing is, sooner or later the recursive step would cut the "group"
+of "connected items" in half (see next section).  It's guaranteed *not*
+to recurse on every single item.
+So I assert that roughly cuts the number of recursive
+steps down to `log n`, in the pathological worst case that you would
+never see in real-world data.
 
 #### Cheap Recursion And The "Grouper"
 
 But wait!  It gets even more complicated!
 
 Compared to the rest of the algorithm, the recursive step is quite expensive.
-It does reduce the domain of the problem, so it's guaranteed to
-complete... someday.  But if we're not careful it'll perform a lot
-of expensive, needless, and redundant calculations.  So there are a
+It does reduce the domain of the problem at every step, so it's guaranteed
+to complete... someday.  But if we're not careful, it'll perform a lot
+of expensive and needless redundant calculations.  So there are a
 bunch of optimizations to the recursive step, mainly to do with the
 group of matches that have the same score.
 
@@ -1616,7 +1674,7 @@ solves maps perfectly onto the stable matching problem.  **correlate** solves a 
 2. different, and
 3. harder.
 
-For inputs that are valid for both Gail-Shapley and **correlate**, I assert that both
+For inputs that are valid for both Gale-Shapley and **correlate**, I assert that both
 algorithms will return the same results, but **correlate** will be faster.
 
 In all the following examples, `A`, `B`, and `C` are values in `dataset_a` (aka "men") and `X`, `Y`, and `Z` are values
