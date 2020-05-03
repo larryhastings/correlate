@@ -1610,7 +1610,7 @@ Because, if it was, I could use the Gale-Shapley algorithm:
 https://en.wikipedia.org/wiki/Gale%E2%80%93Shapley_algorithm
 
 I thought about this for quite a while, and I don't think the problem **correlate**
-solves maps perfectly onto the stable matching problem.  **correlate**solves a problem that is:
+solves maps perfectly onto the stable matching problem.  **correlate** solves a problem that is:
 
 1. simpler,
 2. different, and
