@@ -339,6 +339,7 @@ class MatchBoiler:
         # if len(self.matches) < 50: #debug
             # for item in self.matches: #debug
                 # self.print(f"{self.indent}        {item}") #debug
+            # self.print() #debug
 
         while matches:
             # consume the top-scoring item from matches.
@@ -392,12 +393,12 @@ class MatchBoiler:
                     # if (not reuse_b) and (matching_item.value_b in seen_b): #debug
                         # text.append("value_b") #debug
                     # text = " *and* ".join(text) #debug
-                    # self.print(f"{self.indent}        {matching_item}: score matches, but discarding, already seen {text}.") #debug
+                    # self.print(f"{self.indent}    {matching_item}: score matches, but discarding, already seen {text}.") #debug
                     continue
                 matching_items.append(matching_item)
 
             if len(matching_items) == 1:
-                # self.print(f"{self.indent}        we only had one usable item in this run of matching scores.  match it and move on.") #debug
+                # self.print(f"{self.indent}        we only had one usable match in this run of matching scores.  keep it and move on.") #debug
                 results.append(top_item)
                 seen_a.add(top_item.value_a)
                 seen_b.add(top_item.value_b)
@@ -423,7 +424,7 @@ class MatchBoiler:
                 group = groups.pop()
                 if len(group) == 1:
                     item = group[0]
-                    # self.print(f"{self.indent}        {item}: unconnected, keeping match.") #debug
+                    # self.print(f"{self.indent}    {item}: unconnected, keeping match.") #debug
                     kept_items.append(item)
                     seen_a.add(item.value_a)
                     seen_b.add(item.value_b)
@@ -521,7 +522,7 @@ class MatchBoiler:
                         experiment_results = experiment.matches
                         experiment_score = experiment.matches[0].score
                         # s = "only 1 item" #debug
-                    # self.print(f"{self.indent}                don't bother recursing! {s}.  score: {experiment_score}") #debug
+                    # self.print(f"{self.indent}            don't bother recursing! {s}.  score: {experiment_score}") #debug
                     seen_a = e_seen_a
                     seen_b = e_seen_b
 
@@ -1525,6 +1526,9 @@ class Correlator:
             # self.print(f"    no valid results!  returning 0 matches.  what a goof!") #debug
         else:
             results.sort(key=lambda x: x[0])
+            # self.print(f"    all ranking results:") #debug
+            # for cumulative_score, matches, total_matches, seen_a, seen_b, correlations in results: #debug
+                # self.print(f"        {correlations.id=} {cumulative_score=}") #debug
             # use the highest-scoring correlation
             cumulative_score, matches, total_matches, seen_a, seen_b, correlations = results[-1]
             # self.print(f"    using rankings result {correlations.id}, cumulative score {cumulative_score}") #debug

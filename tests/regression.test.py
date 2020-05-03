@@ -308,6 +308,25 @@ def match_boiler_test(verbose):
         ],
         verbose)
 
+def match_boiler_regression_test(verbose):
+    # There was a bug for a while:
+    #     if there's was a run of matches with the same score,
+    #     and their a and b hadn't been seen yet,
+    #     but they weren't connected,
+    #     the MatchBoiler was throwing them away.
+    #     it needed to flush "kept_items" if the groups were all length 1.
+    #     (there's a print with "no connected groups! no need to recurse. continuing." there now.)
+    cumulative_score, result, seen_a, seen_b = boiler_test_driver(
+        [
+            CorrelatorMatch("a1", "b1", 5),
+            CorrelatorMatch("a2", "b2", 5),
+            CorrelatorMatch("a3", "b3", 5),
+            CorrelatorMatch("a4", "b4", 4),
+        ],
+        verbose)
+    assert len(result) == 4
+
+
 
 test_groups = [
     [
