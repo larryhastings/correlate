@@ -1800,6 +1800,20 @@ the results.
 
 ## Version History
 
+**0.8**
+
+The result of loving hand-tuned optimization: **correlate** version 0.8
+is now an astonishing *19.5%* faster than version 0.7--and *27.3%* faster
+than version 0.5!
+
+The statistics have been improved, including some useful timing information.
+This really demonstrates how much slower fuzzy keys are.
+
+(To see for yourself, run `python3 tests/ytjd.test.py -v` and compare
+the slowest test to the fastest, using the same corpus.  On my computer
+the test without fuzzy keys is 14x faster than the one that uses
+fuzzy keys for everything!)
+
 **0.7**
 
 Careful micro-optimizations for both exact and fuzzy key
