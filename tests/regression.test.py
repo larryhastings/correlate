@@ -48,9 +48,9 @@ def check_results_order(matches, result):
     if r:
         print("check_results_order failure!")
         matches = list(matches)
-        print(f"    {matches=}")
+        print(f"    matches={matches}")
         result = list(reversed(result))
-        print(f"    {result=}")
+        print(f"    result={result}")
         assert not r
 
 
@@ -90,7 +90,7 @@ def smoke_test(verbose):
             pprint("matches", result.matches)
             pprint("unmatched a", result.unmatched_a)
             pprint("unmatched b", result.unmatched_b)
-        assert len(result.matches) == 5, f"{result.matches=} should be length 5, but it's length {len(result.matches)}!"
+        assert len(result.matches) == 5, f"result.matches={result.matches} should be length 5, but it's length {len(result.matches)}!"
         for match in result.matches:
             assert match.value_a == match.value_b
         assert len(result.unmatched_a) == 2
@@ -163,7 +163,7 @@ def fuzzy_rounds_stress_test(verbose):
     assert len(result.matches) == 1
     score = result.matches[0].score
     expected_score = 10.181818181818183
-    assert score == expected_score, f"{score=} {expected_score=}"
+    assert score == expected_score, f"score={score} expected_score={expected_score}"
 
 
 
@@ -242,7 +242,7 @@ def fuzzy_matches_stress_test(verbose):
                 print()
     correct_score = 2.25
     for score in scores:
-        assert score == correct_score, f"{score=} != {correct_score=}, {scores=}"
+        assert score == correct_score, f"score={score} != correct_score={correct_score}, scores={scores}"
 
 
 def boiler_test_driver(matches, verbose):
@@ -257,7 +257,7 @@ def boiler_test_driver(matches, verbose):
         pprint("result", result)
     cumulative_score = sum((item.score for item in result))
     if verbose:
-        print(f"{cumulative_score=}")
+        print(f"cumulative_score={cumulative_score}")
         print()
     check_results_order(matches, result)
     return cumulative_score, result, seen_a, seen_b
@@ -282,7 +282,7 @@ def permute_matches(name, matches, verbose):
             _verbose -= 1
 
     first_result = results[0]
-    assert all(result == first_result for result in results), f"all results should be the same!  {results=}"
+    assert all(result == first_result for result in results), f"all results should be the same!  results={results}"
     if verbose:
         print()
     return first_result
@@ -399,7 +399,7 @@ def match_boiler_2_test(verbose):
         if verbose and (not i % 100):
             print(f"match_boiler_2 test {i}/{len(test_data)}")
         cumulative_score, result, seen_a, seen_b = boiler_test_driver(matches, _verbose)
-        assert len(result) == 6, f"should be 6, but {len(result)=}!"
+        assert len(result) == 6, f"should be 6, but len(result)={len(result)}!"
         if _verbose:
             _verbose -= 1
 

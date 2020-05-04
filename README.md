@@ -31,9 +31,9 @@ two messy but strongly-related datasets.
 
 How it works: you submit your two datasets to
 **correlate**, showing it each value and mining the data and metadata for
-"keys" that map to that value.  You then set it to work.  It thinks for a while,
-then produces its best guess as to how to match the two sets.
-And its best guess is... hey, that's pretty good!
+"keys" that map to that value.  You then set **correlate** to work.
+It thinks for a while, then produces its best guess as to how to match
+the two sets.  And its best guess is... hey, that's pretty good!
 
 In essense, **correlate** uses the uniqueness of keys as clues to find
 its matches.  If there's a key present in both datasets, but it only maps
@@ -331,9 +331,9 @@ On a related note, **correlate** may optionally never
 *actually* call `a.compare(a)`, either.  That is, if the exact same key
 maps to a value in both `dataset_a` and `dataset_b`, **correlate**
 is permitted to skip calling `compare()` and instead automatically
-assign the comparison a fuzzy score of `1`.  **correlate** currently
-does this--but this is not guaranteed,
-as it's only a small optimization, and conditions may change.
+assign the comparison a fuzzy score of `1`.  Currently if the situation
+arose it *would* call `a.compare(a)`, but that wasn't true at various times
+during development.
 
 
 ## API
@@ -598,7 +598,9 @@ that can be a very strong signal indeed.  So it's really up to you.
 Throwing away largely-redundant keys is a speed optimization, but it
 shouldn't affect the quality of your matches.
 
-(The best of both worlds: for common keys, try throwing away the *first* one.)
+(A theoretical best of both worlds: for very common keys,
+consider throwing away the *first* instance.  Though I haven't tried
+this experiment myself.)
 
 #### Check Your Inputs
 
@@ -617,7 +619,7 @@ itself.  Making sure you gave **correlate** the right data can make it not only
 much more accurate, it might make it faster too!
 
 **correlate** provides a function that prints out your datasets in a
-convenient human-readable format: `Correlator.print_dataset()`.
+convenient human-readable format: `Correlator.print_datasets()`.
 
 #### Normalize Strings
 
@@ -807,7 +809,7 @@ then key `'a'` really *is* mapped to value `o` twice,
 and those two mappings can have different weights.
 It's best to think of repeated keys like this as actually
 being two different keys--identical, but distinct.
-It's ike having files with the same filename in two
+It's like having files with the same filename in two
 different directories.  They have the same *filename,* but
 they're not the same *file.*
 
@@ -1162,7 +1164,7 @@ lets us prefer keys with lower round numbers.
 In terms of the abstract scoring formula,
 `score` is the fuzzy score, what's returned by calling the `compare()` method.
 And `cumulative_a` is the sum of all fuzzy `score` scores
-for all matches using `key_a`.  `second_pass` exists to compute `cumulative_a`.
+for all matches using `key_a`.
 
 
 ### Score Ratio Bonus
@@ -1235,9 +1237,12 @@ which is so amazingly expensive that we can't even consider it.
 (You probably want your results from **correlate** before our sun
 turns into a red giant.)  Instead, **correlate** uses a
 comparatively cheap "greedy" algorithm to compute the subset.
+It's not *guaranteed* to produce the optimal subset, but in
+practice it seems to produce optimal results on real-world data.
 
 Here's a short description of the **correlate** "greedy" algorithm:
 
+* Sort `matches` with highest score first.
 * For every match `M` in `matches`:
     * if `value_a` hasn't been matched yet,
     * and `value_b` hasn't been matched yet,
@@ -1245,9 +1250,9 @@ Here's a short description of the **correlate** "greedy" algorithm:
         * remember that `value_a` has been matched,
         * and remember that `value_b` has been matched.
 
-This algorithm is *O*(n).  It's not *guaranteed*
-to produce the optimal subset, but in practice it
-should be optimal.
+The sorting uses Python's built-in sort (Timsort), so it's
+*O*(n log n).  It's implemented in C so it's pretty quick.
+The `for` loop is *O*(n).
 
 The bad news: late in development of **correlate** I
 realized there was a corner case where odds are good the
@@ -1294,18 +1299,17 @@ entry in the list that produced the high-scoring experiment.)
 
 With the "match boiler" in place, **correlate** seems to produce optimal
 results even in these rare ambigous situations.
-I'm not sure what the *big-O* notation is for the "match boiler".
-The pathological worst case, where every match has the same score,
-is probably on the order of *O*(n log n), where the `log n` component
-represents the recursive operations.
 
-Even in the pathological worst case,
-where every match has the same score, and they're all connected to
-each other via having `value_a` and `value_b` in common, I don't think
-the "match boiler" gets to *O*(n²).
-The thing is, sooner or later the recursive step would cut the "group"
-of "connected items" in half (see next section).  It's guaranteed *not*
-to recurse on every single item.
+I'm honestly not sure what the *big-O* notation is for the "match boiler".
+The pathological worst case
+is *probably* on the order of *O*(n log n), where the `log n` component
+represents the recursions.
+In this case, every match has the same score, and they're all connected to
+each other via having `value_a` and `value_b` in common.  I still don't
+think the "match boiler" would be as bad as *O*(n²).
+The thing is, sooner or later the recursive step would cut the
+"group" of "connected items" in half (see next section).  It's guaranteed
+*not* to recurse on every single item.
 So I assert that roughly cuts the number of recursive
 steps down to `log n`, in the pathological worst case that you would
 never see in real-world data.
@@ -1329,7 +1333,9 @@ are interesting, because choosing one of the matches from these
 groups will remove at least one other value from that group
 from consideration.
 There's a utility function called `grouper()` that computes
-these connected groups.
+these connected groups.  (`grouper()` only handles the case
+when `reuse_a == reuse_b == False`; there are alternate
+implementations to handle the other possible cases.)
 
 The second step is to take those "connected groups", and, for
 every group containing only one match object, "keep" it immediately.
@@ -1368,7 +1374,7 @@ and that's good enough.)
 #### The Match Boiler Reused For Fuzzy Key Scoring
 
 Once my first version of the "match boiler" was done, I realized I could reuse
-it for boiling down all fuzzy key matches, too.  Fuzzy key matches already
+it for boiling down all fuzzy key matches too.  Fuzzy key matches already
 used basically the same "greedy" algorithm that were used for matches,
 and I realized the same corner case existed here too.
 
@@ -1427,19 +1433,23 @@ left with `B->Y`.  Total score: 11.  But if it had picked `A->Y`,
 that means it would get to pick `B->X`, and the total score would be 17!
 Amazing!
 
-Is that better?  In an abstract, hypothetical scenario like this, it's
+Is that better?  Your first reaction is probably "of course!".
+But in an abstract, hypothetical scenario like this, it's
 hard to say for sure.
-I doubt this is a real problem in practice.  Handling the
-ambiguous scenario where items had identical scores is already
+
+Anyway I doubt this is a real problem in practice.  Ensuring **correlate**
+handles the ambiguous scenario where items had identical scores is already
 "gilding the lily", considering how rare it happens with real-world data.
-Anyway, when would real data behave in this contrived way?  When
+And when would real data behave in this contrived way?  Why
 would `A` score so highly against `X` and `Y`, but `B` scores
 high against `X` but low against `Y`?  If `B` is a good match for `X`,
 and `X` is a good match for `A`, and `A` is a good match for `Y`, then,
-by transitivity, in the real world, `B` is probably a good match for `Y`.
+by transitivity, with real-world data, `B` is probably a good match
+for `Y`.
 
-So I think this scenario isn't realistic.  And the only way
-to fix it is with the crushingly expensive *O*(nⁿ) algorithm.
+I think pathological scenarios where the "match boiler" will fail like
+this aren't realistic.  And the only way I can think of to fix it is
+with the crushingly expensive *O*(nⁿ) algorithm.
 It's just not worth it.  So, relax!  YAGNI.
 
 
@@ -1857,6 +1867,11 @@ the results.
 
 
 ## Version History
+
+**0.8.1**
+
+Fixed compatibility with Python 3.6.  All I needed to do was
+remove some *equals-sign-in-f-strings* usage in spots.
 
 **0.8**
 

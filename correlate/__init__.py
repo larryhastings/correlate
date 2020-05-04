@@ -42,7 +42,7 @@ import math
 # import pprint #debug
 import time
 
-__version__ = "0.8"
+__version__ = "0.8.1"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -299,7 +299,7 @@ class MatchBoiler:
     def _assert_in_ascending_sorted_order(self):
         previous_score = -math.inf
         for i, item in enumerate(self.matches):
-            assert previous_score <= item.score, f"{self.name}.matches not in ascending sorted order! {previous_score=} > matches[{i}].score {item.score}"
+            assert previous_score <= item.score, f"{self.name}.matches not in ascending sorted order! previous_score {previous_score} > matches[{i}].score {item.score}"
         return True
 
     def __call__(self):
@@ -728,7 +728,7 @@ class Correlator:
             index_rounds = self._key_to_index[key]
             # the number of rounds we've stored can never be more
             # than one less than the round we're adding now
-            assert len(index_rounds) >= round, f"{len(index_rounds)=} should be >= {round=}"
+            assert len(index_rounds) >= round, f"len(index_rounds)={len(index_rounds)}, should be >= round {round}"
             if len(index_rounds) == round:
                 index_rounds.append(set())
             index_rounds[round].add(index)

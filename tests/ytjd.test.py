@@ -321,7 +321,7 @@ class YTJDTest:
         dataset.lines = database_lines
         for i, original_line in enumerate(dataset.lines):
             line = cleanup_line(original_line)
-            # print(f"DATABASE {original_line=} {line=}")
+            # print(f"DATABASE original_line={original_line!r} line={line!r}")
             self.set_line(dataset, original_line, line)
             dataset.value(original_line, ranking=i)
 
@@ -333,7 +333,7 @@ class YTJDTest:
             line = line.replace(".flac", "")
             line = line.replace(".mp3", "")
             line = cleanup_line(line)
-            # print(f"BEST {original_line=} {line=}")
+            # print(f"BEST original_line={original_line!r} line={line!r}")
             self.set_line(dataset, original_line, line)
             dataset.value(original_line, ranking=i)
             correct_matches.append(int(correct_match))
@@ -345,7 +345,7 @@ class YTJDTest:
             line, _, correct_match = original_line.rpartition(" | ")
             line = line.replace(".jpg", "")
             line = cleanup_line(line)
-            # print(f"SCRIPT_FIRST_PAGES {original_line=} {line=}")
+            # print(f"SCRIPT_FIRST_PAGES original_line={original_line!r} line={line!r}")
             self.set_line(dataset, original_line, line)
             dataset.value(original_line, ranking=i)
             correct_match = correct_match.strip()
@@ -405,7 +405,7 @@ class YTJDTest:
                 for subtitle in field.split(" aka "):
                     # print(f"    string used for fuzzy match {field!r}")
                     key = StringFuzzyKey(subtitle, minimum_score=self.fuzzy_title_minimum_score)
-                    # print(f"    {dataset._id=} {field=} {key=} -> {original_line=}")
+                    # print(f"    dataset._id={dataset._id!r} field={field!r} key={key!r} -> original_line={original_line!r}")
                     dataset.set(key, original_line, weight=self.fuzzy_title_weight)
             else:
                 # don't remove dashes until now, it messes up dates, etc
@@ -532,15 +532,15 @@ def print_ytjd(s, prefix=""):
     for field in fields:
         field = field.strip()
         if is_int(field) or (field[0] == "s" and is_int(field[1:])):
-            assert number is None, f"{number=} - {date=} - {title=}, {field=}, {s=!r}"
+            assert number is None, f"number={number!r} - date={date!r} - title={title!r}, field={field!r}, s={s!r}"
             number = field
             continue
         if field[0].isalpha():
-            assert title is None, f"{number=} - {date=} - {title=}, {field=}, {s=!r}"
+            assert title is None, f"number={number!r} - date={date!r} - title={title!r}, field={field!r}, s={s!r}"
             title = field
             continue
         if len(field) >= 5:
-            assert date is None, f"{number=} - {date=} - {title=}, {field=}, {s=!r}"
+            assert date is None, f"number={number!r} - date={date!r} - title={title!r}, field={field!r}, s={s!r}"
             assert field[:3] in ("194", "195", "196")
             date = field
             continue
