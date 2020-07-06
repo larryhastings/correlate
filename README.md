@@ -200,7 +200,7 @@ behavior:
   2 tells **correlate** that this key mapped to this value is twice as
   significant.
 * A key can map to a value multiple times.  Each mapping can have its own weight.
-  * If both datasets are ordered, this ordering can optionally influence the match scores.
+* If both datasets are ordered, this ordering can optionally influence the match scores.
   **correlate** calls this *ranking.*  Ranking is an attribute of values, not keys.
 * Keys can be "fuzzy", meaning two keys can be a partial match rather than a binary yes/no.
   Fuzzy keys in **correlate** must inherit from a custom abstract base class called
@@ -209,7 +209,7 @@ behavior:
 ## Sample Code And infer_mv
 
 **correlate** ships with some sample code for you to read,
-to get a feel for what it's like to work with.  Take a look
+to get a feel for what it's like to use.  Take a look
 at the scripts in the `tests` and `utilities` directories.
 
 In particular, `utilities` contains a script called `infer_mv`.
@@ -236,7 +236,7 @@ performs the renames.
 Why?  It's always a good idea to check over the output of **correlate**
 before you commit to it.
 
-You should use `infer_mv` like so:
+I use `infer_mv` like so:
 
     % infer_mv ../old_path *
     # look at output, if it's all fine run
@@ -300,10 +300,11 @@ and their comparison must be reflexive, symmetric, transitive, and consistent.
 
 In addition, fuzzy keys must support a method called `compare` with this signature:
 `self.compare(other)`.  `other` will be another fuzzy key of the same type.  Your `compare`
-function should return a number between (and including) `0` and `1`, indicating how close
-a match `self` is to `other`.  If `compare` returns `1`, it's saying this is a perfect
-match, that the two values are identical; if it returns `0`, it's a perfect mismatch,
-telling **correlate** that the two keys have nothing in common.
+function should return a number (either `int` or `float`) between (and including)
+`0` and `1`, indicating how close a match `self` is to `other`.  If `compare`
+returns `1`, it's saying this is a perfect match, that the two values are identical;
+if it returns `0`, it's a perfect mismatch, telling **correlate** that the two keys
+have nothing in common.
 
 **correlate** requires that `compare` also obey the four mathematical constraints required
 of comparisons between keys.  In the following rules, `a` and `b` are fuzzy keys of the
@@ -334,6 +335,13 @@ is permitted to skip calling `compare()` and instead automatically
 assign the comparison a fuzzy score of `1`.  Currently if the situation
 arose it *would* call `a.compare(a)`, but that wasn't true at various times
 during development.
+
+Finally, it's important to note that fuzzy keys are dramatically slower
+than exact keys.  If you can express your problem purely using exact keys,
+do so!  It'll run faster as a result.  You can get a sense of the speed
+difference by running `tests/ytjd.test.py` with verbose mode on (`-v`).
+A test using the same corpus but switching everything to fuzzy keys
+runs about 14x slower!
 
 
 ## API
@@ -504,10 +512,9 @@ The first step in cleaning up **correlate's** output is usually
 to stop it from making bad matches by setting a `minimum_score`.
 
 When you have bad matches, it's usually because the two datasets don't map
-perfectly to each other.  If there's a value in `dataset_a` that really
-has no good match in `dataset_b`, well, **correlate** doesn't really
-have a way of knowing that.   So it may match that value to something
-anyway.
+perfectly to each other.  If there's a value in `dataset_a` that has no good
+match in `dataset_b`, well, **correlate** doesn't really have a way of
+knowing that.   So it may match that value to something anyway.
 
 Look at it this way: the goal of **correlate** is to find matches between
 the two datasets.  If it's made all the good matches it can, and there's
@@ -517,7 +524,7 @@ out of sheer desparation.
 
 However!  Bad matches like these tend to have a very low score.
 And usually all those bad matches are clumped together
-at the bottom.  There'll probably be an inflection point
+at the very bottom of the scores.  There'll probably be an inflection point
 where the scores drop off significantly and the matches go from good to bad.
 
 This is what `minimum_score` is for.  `minimum_score` tells **correlate**
@@ -598,9 +605,16 @@ that can be a very strong signal indeed.  So it's really up to you.
 Throwing away largely-redundant keys is a speed optimization, but it
 shouldn't affect the quality of your matches.
 
-(A theoretical best of both worlds: for very common keys,
-consider throwing away the *first* instance.  Though I haven't tried
-this experiment myself.)
+Note that **correlate** is now *very* efficient when it comes to
+matching with exact keys.  To be honest, this recommendation is
+probably out-of-date, and it's fine to leave in all the common keys
+you want.  It's true they provide only a tiny amount of signal--but they
+also have relatively little runtime cost, either in memory or CPU time.
+At this point it's *probably* not worth the bother.
+
+(But here's a theoretical best of both worlds to consider: for very
+common keys, consider throwing away the *first* instance.  I admit I
+haven't tried this experiment myself.)
 
 #### Check Your Inputs
 
@@ -656,8 +670,8 @@ Two good techniques:
     You may need to experiment with both to find out what works well for you.
 * Multiply your fuzzy score by itself.  Squaring or even cubing a fuzzy
   score will preserve high scores and attenuate low scores.
-  Note that the scoring algorithm for fuzzy key matches already *cubes*
-  the fuzzy score.  Additional multiplying of the score by itself is
+  Note however that the scoring algorithm for fuzzy key matches already
+  *cubes* the fuzzy score.  Additional multiplying of the score by itself is
   probably unnecessary in most cases.
 
 
@@ -994,9 +1008,13 @@ although that number is only directly useful in computing `score_ratio_bonus`.
 
 Although **correlate** uses the same scoring formula for both exact keys and
 fuzzy keys in an abstract sense, scoring matches between exact keys is much
-simpler in practice.
+simpler in practice.  Let's tailor the "abstract" scoring algorithm above for
+exact keys.  This will let us optimize the algorithm in a couple places and
+make it much faster!
 
-First, `key_a` and `key_b` are the same value.  That means we can rewrite the
+First, with exact keys, naturally they're either an exact match or they aren't.
+If they're an exact match, they're the same Python value.  So `key_a` and `key_b`
+must be identical, which means conceptually we can swap them.  Let's rewrite the
 equation slightly:
 
     cumulative_a = the sum of all scores between key_b and all keys in dataset_b
@@ -1007,9 +1025,9 @@ What changed?  We've swapped `key_a` and `key_b`.  Why?  It'll help, keep readin
 Second, `score` is always either `1` or `0`.  It's `1` when two keys are exactly
 the same, and `0` otherwise.  If the base `score` for the match is `0`, then the
 `final_score` will be `0` and we can skip all of it.  So we only ever compute
-a `final_score` when `score` is `1`.
+a `final_score` when `score` is `1`, when the keys are identical.
 
-Since `score` is only ever used as a multiplier, we can remove it.
+Since `score` is only ever used as a multiplier, we can discard it.
 
 Third, `cumulative_a` and `cumulative_b` are similarly easy to compute.
 They're just the number of times that key is mapped to any value in
@@ -1042,6 +1060,7 @@ making the final math:
 
 ### Fuzzy Keys
 
+Let me tell you a wonderful bed-time story.
 Once upon a time, **correlate** was small and beautiful.
 But that version only supported exact keys.
 By the time fuzzy keys were completely implemented and feature-complete
@@ -1288,9 +1307,9 @@ for short.  The boiler uses a hybrid approach.  By default,
 when the scores for matches are unique, it uses the "greedy"
 algorithm.  If it encounters a run of items with matching scores,
 where any of those items have `value_a` or `value_b` in common,
-it recursively runs an experiment where it keeps each of those
-items in turn.  It computes the score from each of these recursive
-experiments and keeps the one with the highest score.
+it recursively runs an experiment where it chooses each of those
+matchess in turn.  It computes the score from each of these
+recursive experiments and keeps the one with the highest score.
 
 (If two or more experiments have the same score, it keeps the first one
 it encountered with that score--but, since the input to the match boiler is
@@ -1687,10 +1706,14 @@ solves maps perfectly onto the stable matching problem.  **correlate** solves a 
 For inputs that are valid for both Gale-Shapley and **correlate**, I assert that both
 algorithms will return the same results, but **correlate** will be faster.
 
-In all the following examples, `A`, `B`, and `C` are values in `dataset_a` (aka "men") and `X`, `Y`, and `Z` are values
-in `dataset_b` (aka "women").  The expression `A: XY` means "`A` prefers `X` to `Y`". The expression `A:X=1.5` means
+(Not a claim I make lightly!  Gale and Shapley were both brilliant, and the Gale-Shapley
+algorithm is marvelous.  It's just that **correlate** can take shortcuts Gale-Shapley cannot,
+because **correlate** is solving a simpler problem.)
+
+In all the following examples, `A`, `B`, and `C` are values in `dataset_a` and `X`, `Y`, and `Z` are values
+in `dataset_b`.  The expression `A: XY` means "`A` prefers `X` to `Y`". The expression `A:X=1.5` means
 "when matching `A` and `X`, their score is `1.5`".  When I talk about Gale-Shapley, `dataset_a` will stand for the
-men and `dataset_b` will stand for the women, which means `A` is a man and `X` is a woman.  Where we need to talk
+"men" and `dataset_b` will stand for the "women", which means `A` is a man and `X` is a woman.  Where we need to talk
 about the matches themselves, we'll call them `P` and `Q`.
 
 #### How is it simpler?
@@ -1718,7 +1741,7 @@ just can't *happen* with **correlate**, because it uses scores to establish its 
 There are nine possible pairings with those six values. It's impossible to assign a unique score to each of those nine
 pairings such that the preferences of each value match those constraints.
 
-(I'm certain.  Not only did I work my way through it, I also wrote a brute-force program that tried every
+(I'm pretty certain.  Not only did I work my way through it, I also wrote a brute-force program that tried every
 possible combination. 362,880 attempts later, I declared failure.)
 
 #### How is it different?
@@ -1805,8 +1828,8 @@ Iterate backwards through this list of operations, and the first time you
 see any particular woman reply with *maybe*, change that answer to a *yes.*
 
 Next, observe that we can swap any two adjacent operations--with one important
-caveat.  We must maintain an invariant: for every woman `X` for every operation
-containing `X` that happens after `X` says *yes*, `X` must say *no.*
+caveat.  We must maintain an invariant: for every woman `X`, for every
+operation containing `X` that happens after `X` says *yes*, `X` must say *no.*
 
 Thus, if there are two adjacent operations `P` and `Q`, where `P`
 is currently first, and we want to swap them so `Q` is first,
@@ -1829,7 +1852,7 @@ We now know the following are true:
 * `X` is the first choice of `A`.  Therefore `A` will ask
   `X` first.
 * `A` is the first choice of `X`.  Therefore `X` is
-  guaranteed to have said *yes*.
+  guaranteed to say *yes*.
 
 Since the first operation `P` is guaranteed to be a *yes*,
 that means that every subsequent operation involving either
