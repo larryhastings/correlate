@@ -696,7 +696,7 @@ Mathematically:
     normalized_score = (score - minimum_score) / delta
 
 
-## The Algorithm And The Code
+## Implementation Notes On The Algorithm And The Code
 
 > If the implementation is hard to explain, it's a bad idea.
 > --*The Zen Of Python* by Tim Peters
@@ -704,7 +704,7 @@ Mathematically:
 What follows is an exhaustive (and exhausting!) chapter
 on the implementation of **correlate**.  This is here
 partially for posterity, partially because I like
-reading this sort of thing in other people's project,
+reading this sort of thing in other people's projects,
 but mostly to make it easier to reaquaint myself with
 the code when I have to fix a bug three years from now.
 
@@ -766,7 +766,11 @@ one correlation.
 > This pass also performs all fuzzy key comparisons and caches
 > their results.
 >
-> *Complexity:* *O*(n²), for the fuzzy key comparisons step
+> *Complexity:* *O*(n²), for the fuzzy key comparisons step.
+> For a *correlate* run with a lot of fuzzy keys, this is often
+> the slowest part of the run.  If your correlate is mostly
+> exact keys, this part will be pretty quick, because all the
+> *O*(n²) work is done in C code (set intersections, and sorting).
 
 **Pass 3**
 
@@ -808,6 +812,9 @@ one correlation.
 > *Complexity:* *O*(n)
 
 Thus the big-O notation for **correlate** overall is *O*(n²).
+The slowest part of **correlate** is processing lots of fuzzy
+keys; if you can stick mostly to exact keys, your **correlate**
+runs will be a lot quicker.
 
 
 ### Rounds
@@ -1020,7 +1027,8 @@ equation slightly:
     cumulative_a = the sum of all scores between key_b and all keys in dataset_b
     cumulative_b = the sum of all scores between key_a and all keys in dataset_a
 
-What changed?  We've swapped `key_a` and `key_b`.  Why?  It'll help, keep reading.
+What changed?  First, we've swapped `key_a` and `key_b`.
+(Why?  It'll help.  Hey, keep reading.)
 
 Second, `score` is always either `1` or `0`.  It's `1` when two keys are exactly
 the same, and `0` otherwise.  If the base `score` for the match is `0`, then the
@@ -1308,13 +1316,13 @@ when the scores for matches are unique, it uses the "greedy"
 algorithm.  If it encounters a run of items with matching scores,
 where any of those items have `value_a` or `value_b` in common,
 it recursively runs an experiment where it chooses each of those
-matchess in turn.  It computes the score from each of these
+matches in turn.  It computes the score from each of these
 recursive experiments and keeps the one with the highest score.
 
 (If two or more experiments have the same score, it keeps the first one
-it encountered with that score--but, since the input to the match boiler is
-a list, sorted with highest scores to the end, technically it's the *last*
-entry in the list that produced the high-scoring experiment.)
+it encountered with that score--but, since the input to the "match boiler"
+is a list, sorted with highest scores to the end, technically it's the
+*last* entry in the list that produced the high-scoring experiment.)
 
 With the "match boiler" in place, **correlate** seems to produce optimal
 results even in these rare ambigous situations.
@@ -1337,38 +1345,41 @@ never see in real-world data.
 
 But wait!  It gets even more complicated!
 
-Compared to the rest of the algorithm, the recursive step is quite expensive.
-It does reduce the domain of the problem at every step, so it's guaranteed
-to complete... someday.  But if we're not careful, it'll perform a lot
-of expensive and needless redundant calculations.  So there are a
-bunch of optimizations to the recursive step, mainly to do with the
-group of matches that have the same score.
+Compared to the rest of the algorithm, the recursive step of the
+"match boiler" is quite expensive.  It does reduce the domain of
+the problem at every step, so it's guaranteed to complete...
+someday.  But, if we're not careful, it'll perform a lot of
+expensive and redundant calculations.  So there are a bunch
+of optimizations to the match boiler's recursive step, mainly
+to do with the group of matches that have the same score.
 
 The first step is to analyze these matches and boil them out
 into "connected groups".  A "connected group" is a set of
 match objects where either each object has a `value_a` or a
 `value_b` in common with another object in the group.  These
-are interesting, because choosing one of the matches from these
+are relevant because choosing one of the matches from these
 groups will remove at least one other value from that group
-from consideration.
+from consideration (because that `value_a` or `value_b` is
+now "used" and so that match will be thrown away).
 There's a utility function called `grouper()` that computes
 these connected groups.  (`grouper()` only handles the case
 when `reuse_a == reuse_b == False`; there are alternate
-implementations to handle the other possible cases.)
+implementations to handle the other possible cases, e.g.
+`grouper_reuse_a()`.)
 
-The second step is to take those "connected groups", and, for
-every group containing only one match object, "keep" it immediately.
-We already know we're keeping these, and it's cheaper to do it now.
+The second step is to take those "connected groups" and,
+for every group containing only one match object,
+"keep" it immediately.  We already know we're keeping
+these and it's cheaper to do that first.
 
 The third step is to recurse over each of the values of the
-smallest connected group of size 2 or more.  Why the smallest?
-Because it's cheaper.  Let's say there are 50 items left
-in the list of matches.  At the top are 6 match objects
-with the same score.  There's two groups: one of length 2,
-the other of length 4.
-The number of operations we'll perform by looping and
-recursing is, roughly, **N** • **M**, where **N** is `len(group)`
-and **M** is `len(matches - group)`.  So which one is cheaper:
+*smallest* connected group of size 2 or more.  Why the smallest?
+It's cheaper.  Let's say there are 50 items left in the list
+of matches.  At the top are 6 match objects with the same score.
+There are two groups: one of length 2, the other of length 4.
+The number of operations we'll perform by looping and recursing is,
+roughly, **N** • **M**, where **N** is `len(group)` and **M** is
+`len(matches - group)`.  So which one is smaller, aka cheaper:
 
 * 2 x 48, or
 * 4 x 46?
@@ -1395,13 +1406,13 @@ and that's good enough.)
 Once my first version of the "match boiler" was done, I realized I could reuse
 it for boiling down all fuzzy key matches too.  Fuzzy key matches already
 used basically the same "greedy" algorithm that were used for matches,
-and I realized the same corner case existed here too.
+and it dawned on me that the same corner case existed here too.
 
 My first attempt was quite complicated, as the "match boiler" doesn't
 itself understand rounds.  I added a callback which it'd call every time it
 kept a match, which passed in the keys that got matched.  Since those keys
 were now "consumed", I would inject new matches using those keys from
-subsequent rounds (if any). This worked, but the code was complicated.
+subsequent rounds (if any). This worked but the code was complicated.
 
 And it got even more complicated later when I added the recursive step!
 I had to save and restore all the state of which fuzzy keys had been
@@ -1433,11 +1444,11 @@ This had the added benefit of being a bit faster, too!
 
 #### Theoretical Failings Of The Match Boiler
 
-Even with the boiler, you can still contrive scenarios where **correlate**
-will produce arguably sub-optimal results.  The boiler only tries experiments
-where the matches have the same score.  But it's possible that the
-greedy algorithm may find a local maximum that causes it to miss the
-global maximum.
+Even with the "match boiler", you can still contrive scenarios
+where **correlate** will produce arguably sub-optimal results.
+The boiler only tries experiments where the matches have the
+same score.  But it's possible that the greedy algorithm may
+find a local maximum that causes it to miss the global maximum.
 
 If `A` and `B` are values in `dataset_a`, and `X` and `Y` are
 values in `dataset_b`, and the matches have these scores:
@@ -1449,27 +1460,31 @@ values in `dataset_b`, and the matches have these scores:
 
 In this scenario, the boiler will pick `A->X`, which means it's
 left with `B->Y`.  Total score: 11.  But if it had picked `A->Y`,
-that means it would get to pick `B->X`, and the total score would be 17!
-Amazing!
+that means it would get to pick `B->X`, and the total score would
+be 17!  Amazing!
 
 Is that better?  Your first reaction is probably "of course!".
 But in an abstract, hypothetical scenario like this, it's
-hard to say for sure.
+hard to say for sure.  I mean, yes it's a better *score.*  But
+is it a better *match?*  Is this the output the user would have
+wanted?  Who knows--this scenario is completely hypothetical in
+the first place.
 
-Anyway I doubt this is a real problem in practice.  Ensuring **correlate**
-handles the ambiguous scenario where items had identical scores is already
-"gilding the lily", considering how rare it happens with real-world data.
-And when would real data behave in this contrived way?  Why
-would `A` score so highly against `X` and `Y`, but `B` scores
+I doubt this is a real problem in practice.  Ensuring **correlate**
+handles the ambiguous scenario where items had identical scores is
+already "gilding the lily", considering how rare it happens with
+real-world data.  And when would real data behave in this contrived
+way?  Why would `A` score so highly against `X` and `Y`, but `B` scores
 high against `X` but low against `Y`?  If `B` is a good match for `X`,
 and `X` is a good match for `A`, and `A` is a good match for `Y`, then,
-by transitivity, with real-world data, `B` is probably a good match
-for `Y`.
+with real-world data, transitivity would suggest `B` is a good match
+for `Y`.  This contrived scenario seems more and more contrived the more
+we look at it, and unlikely to occur in the real world.
 
 I think pathological scenarios where the "match boiler" will fail like
 this aren't realistic.  And the only way I can think of to fix it is
 with the crushingly expensive *O*(nⁿ) algorithm.
-It's just not worth it.  So, relax!  YAGNI.
+It's just not worth it.  So, relax!  As we say in Python: YAGNI.
 
 
 ### Ranking
@@ -1492,9 +1507,12 @@ of the rankings, what we'll call *absolute* and *relative* ranking.
 These two approaches differ in how they compare the ranking numbers,
 as follows:
 
-* *Absolute* ranking assmes the ranking numbers are the same
+* *Absolute* ranking assumes the ranking numbers are the same
   for both datasets.  `ranking=5` in `dataset_a` is a perfect
-  match to `ranking=5` in `dataset_b`.
+  match to `ranking=5` in `dataset_b`.  This works well when
+  your datasets are both reasonably complete; if they're different
+  sizes, perhaps one or both are truncated at either the beginning
+  or end.
 * *Relative* ranking assumes that the two datasets represent the
   same range of data, and uses the ratio of the ranking of a value
   divided by the highest ranking set in that dataset to compute
@@ -1504,23 +1522,24 @@ as follows:
   of the way from the beginning to the end.  This percentage
   is calculated similarly for both datasets, and the distance
   between two values is the distance between these two percentages.
+  This works well if one or both of your datasets are sparse.
 
 For example, if `dataset_a` had 100 items ranked 1 to 100,
-and `dataset_b` had 800 items ranked 1 to 800,
-a value to `dataset_a` with `ranking=50` in *absolute* ranking
+and `dataset_b` had 800 items ranked 1 to 800, a value to
+`dataset_a` with `ranking=50` in *absolute* ranking
 would be considered closest to a value in `dataset_b` with `ranking=50`,
 but when using *relative* ranking
 it'd be considered closest to a value in `dataset_b` with `ranking=400`.
 
 Which one does **correlate** use?  It's configurable with the `ranking`
-parameter to `correlate()`.  By default it uses "best" ranking.
-"Best" ranking means **correlate** will compute scores using *both*
-methods and choose the approach with the highest overall score.
+parameter to `correlate()`.  By default it uses the "best" ranking.
+"Best" ranking means **correlate** compute a score using *both*
+methods and chooses the one with the highest score.
 You can override this by supplying a different value to `ranking`
 but this shouldn't be necessary.  (Theoretically it should be faster
-to use a specific ranking approach.  Unfortunately this hasn't been
-optimized yet, so using only one ranking doesn't really speed things up.)
-
+to use only one ranking approach.  Unfortunately this hasn't been
+optimized yet, so using only one ranking doesn't currently speed
+things up.)
 
 Ranking is the last step in computing the score of a match.
 As for how ranking affects the score, it depends on whether you
@@ -1582,9 +1601,9 @@ code ends with the special marker "`#debug`".
 
 To turn on this logging, run the `debug.py` script in the same directory
 as **correlate's** `__init__.py` script.  Each time you run it, it'll
-toggle the debug print statements.
+toggle (comment / uncomment) the debug print statements.
 Note that the debug feature in **correlate** requires Python 3.8 or higher,
-because it frequently uses the beloved "equals sign inside f-strings" syntax.
+because it frequently uses 3.8's beloved "equals sign inside f-strings" syntax.
 
 By default the logging is sent to stdout.  If you want to override where
 it's sent, write your own `print` function, and assign it to your
@@ -1592,21 +1611,21 @@ it's sent, write your own `print` function, and assign it to your
 
 The format of the log is undocumented and subject to change.  Good luck!
 The main thing you'll want to do is figure out the "index" of the values
-in datasets a and b that you want to compare, then search for `" (index_a) x (index_b) "`.
-For example, if the match you want to see is between value index 35 in `dataset_a`
-and value index 51 in `dataset_b`, search in the log for `" 35 x 51 "`.
-(The leading and trailing spaces means your search will skip over,
-for example, `235 x 514`.)
+in `dataset_a` and `dataset_b` that you want to compare, then search for
+`" (index_a) x (index_b) "`.  For example, if the match you want to see
+is between value index 35 in `dataset_a` and value index 51 in `dataset_b`,
+search in the log for `" 35 x 51 "`. (The leading and trailing spaces
+means your search will skip over, for example, `235 x 514`.)
 
 
 ### Alternate Fuzzy Scoring Approaches That Didn't Work
 
-The math behind fuzzy scoring is a bit surprising, at least to me.
+I find the math behind fuzzy scoring a bit surprising.
 If you boil down the formula to its constituent factors,
 you'll notice one of the factors is `fuzzy_score` *cubed.*
 Why is it *cubed?*
 
-The simplest answer: that's the first approach that worked
+The simplest answer: that's the first approach that seemed to work
 properly.  To really understand why, you'll need to understand the
 history of fuzzy scoring in **correlate**--all the approaches
 I tried first that *didn't* work.
@@ -1626,12 +1645,12 @@ Once I realized how dumb that was, the obvious approach was to score
 them identically to exact keys--divide the fuzzy score by the product
 of the number of keys this *could* have matched against in each
 of the two datasets.  This was obviously wrong right away.
-In the "YTJD" test, every value had the same fuzzy keys, depending
+In the "YTJD" test, every value had one or more fuzzy keys, depending
 on the test: every value always had a fuzzy date key, and depending
 on the test it might have a fuzzy title key and/or a fuzzy episode number
 key too.  So each of the 812 values in the first dataset had one
-fuzzy key for each type, and each of the 724 values in the second dataset
-did too.  Even if we got a perfect fuzzy match, the maximum score
+fuzzy key for each fuzzy type, and each of the 724 values in the second
+dataset did too.  Even if we got a perfect fuzzy match, the maximum score
 for a fuzzy match was now `1.0 / (812 * 724)` which is `0.0000017`.  So now
 we had the opposite problem: instead of being super important, even a perfect
 fuzzy match contributed practically nothing to the final score.
@@ -1652,10 +1671,11 @@ fuzzy key that maps to a single value,
 and `dataset_a` only had one fuzzy key that also only maps to a single value.
 And let's say the fuzzy score you get from matching those two keys
 is `0.000001`--a really terrible match.
-Let's plug those numbers into our formula, shall we.  We get `0.000001 / (0.000001 * 0.000001)`
-which is `1000000.0`.  A million!  That's crazy!  We've taken an absolutely
+Let's plug those numbers into our formula, shall we!
+We get `0.000001 / (0.000001 * 0.000001)`, which is `1000000.0`.
+A million!  That's crazy!  We've taken an absolutely
 terrible fuzzy match and inflated its score to be nonsensically high.
-Clearly that's not right.
+Clearly that's not right either.
 
 This leads us to the formula that actually works.  The insight here
 is that the same formula needs to work identically for exact keys.
@@ -1813,8 +1833,8 @@ need is the comparatively simple "greedy algorithm".  (Again: this
 it's sufficient for the simple problem domain we face here.)
 
 So let's run Gale-Shapley on our dataset.  And every time we perform
-an operation, we write it down--we write down "man `A` asked woman `X`"
-and whether her reply was *maybe* or *no*.
+an operation, we write it down in a list--we write down
+"man `A` asked woman `X`" and whether her reply was *maybe* or *no*.
 
 Observe two things about this list:
 
@@ -1824,12 +1844,14 @@ resulting *maybe* and *no* responses will change.
 
 * Second, the *last* maybe said by each woman is always, effectively, a *yes*.
 
-Iterate backwards through this list of operations, and the first time you
-see any particular woman reply with *maybe*, change that answer to a *yes.*
+Now, we iterate backwards through this list of matches, and the first
+time we see any particular woman reply *maybe*, we change that answer
+to a *yes.*
 
-Next, observe that we can swap any two adjacent operations--with one important
-caveat.  We must maintain an invariant: for every woman `X`, for every
-operation containing `X` that happens after `X` says *yes*, `X` must say *no.*
+Next, observe that we can swap any two adjacent operations--with one
+important caveat.  We must maintain an invariant: for every woman `X`,
+for every operation containing `X` that happens after `X` says *yes*,
+`X` must say *no.*
 
 Thus, if there are two adjacent operations `P` and `Q`, where `P`
 is currently first, and we want to swap them so `Q` is first,
@@ -1849,9 +1871,11 @@ and say that it matches man `A` with woman `X`.
 
 We now know the following are true:
 
-* `X` is the first choice of `A`.  Therefore `A` will ask
-  `X` first.
-* `A` is the first choice of `X`.  Therefore `X` is
+* `X` is the first choice of `A`.  This must be true because
+  `P` is the match with the highest score.  Therefore `A` will
+  ask `X` first.
+* `A` is the first choice of `X`, again because `P` is the
+  match with the highest score.  Therefore `X` is
   guaranteed to say *yes*.
 
 Since the first operation `P` is guaranteed to be a *yes*,
@@ -1866,7 +1890,9 @@ first operation such that:
 * `B != A`, and
 * `Y != X`.
 
-By definition `Q` must also be a *yes*.  If there are any operations
+By definition `Q` must also be a *yes*, because `B` and `Y`
+are each other's first choices now that `A` and `X` are
+unavailable for matching.  If there are any operations
 between `P` and `Q`, these operations involve either `A` or `X`.
 Therefore they must be *no*.  Therefore `Q` represents the
 highest remaining preference for both `B` and `Y`.
@@ -1876,9 +1902,9 @@ the first operation for both that man and that woman in which
 they weren't paired up with a woman or man (respectively) that
 had already said *yes* to someone else.
 
-Therefore this list of operations now resembles the operations
-performed by the **correlate** "greedy" algorithm, more or less.
-It sorts the matches by score, then iterates down it.  For every
+This list of operations now more or less resembles the operations
+performed by the **correlate** "greedy" algorithm. It sorts the
+matches by score, then iterates down that sorted list.  For every
 man `A` and woman `X`, if neither `A` nor `X` has been matched yet,
 it matches `A` and `X` and remembers that they've been matched.
 
