@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# This is designed to be run from the "correlate" directory,
+# not from the "tests" directory.
 
 echo
 python3 correlate/debug.py -u

@@ -180,7 +180,7 @@ def main(argv):
             continue
         tests_run += 1
         if verbose:
-            print(f'"Yours Truly, Johnny Dollar" test #{i}')
+            print(f'"Yours Truly, Johnny Dollar" test #{i} (using b corpus "{flags["dataset_b"]}")')
         t = YTJDTest()
         t.__dict__.update(flags)
         correct, incorrect = t(verbose)
