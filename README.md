@@ -7,24 +7,26 @@
 
 ## Overview
 
-Let's say you have two sets of data that really represent the same data,
-just in different forms.
-As an example, maybe your first dataset is Wikipedia's list of all episodes of a TV
-show, and your second dataset is a directory full of video files of
-that TV show.  The episode *"Neurostim"* appears in both datasets but
-it's represented differently in each.
+Let's say you've downloaded a bunch of video files that represent
+a season of a (presumably public domain!) TV show.  But the filenames
+are terrible.  And let's say you have some very clean data from
+Wikipedia with the correct titles for all the episodes.
+So the word *"Neurostim"* appears in both places.
 
-Now let's say you want to match them up with each other--you want
-to match up the values in the first dataset with their equivalents
-in the second dataset. The thing is, it's real-world data--and
-it's probably a little messy.  Perhaps the two datasets aren't in
-the exact same order.  And while some matches are obvious, others are less so.
-Maybe one dataset has some values not present in the other and vice-versa.
+If you're as fastidious as I am, you want to rename the video files
+so they have nice clean names.  You *could* do it by hand.
+But what if there are a lot of episodes?
+And what do you do if there's an update of the video files?
+Do you want to redo the correlation by hand every time there's an update?
 
-What do you do?  Sure, you could correlate the two datasets by hand.
-But what if the datasets are really big?
-And what do you do if they get updated?  Do you want to update the
-correlation by hand every time either dataset changes?
+Obviously you'd like to automate this.  You want
+to match up each filename with its equivalent listing from Wikipedia. The
+thing is, it's real-world data--and it's probably a little messy.
+Perhaps they aren't in the exact same order.  And while some matches are
+obvious, others are less so.  Maybe some episodes are missing in your
+directory, or maybe Wikipedia's list is incomplete.
+
+How can you *automate* this process?
 
 **correlate** solves this problem for you.  It correlates values between
 two messy but strongly-related datasets.
