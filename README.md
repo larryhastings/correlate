@@ -354,7 +354,7 @@ than exact keys.  If you can express your problem purely using exact keys,
 you should do so!  It'll run faster as a result.  You can get a sense of
 the speed difference by running `tests/ytjd.test.py` with verbose mode
 on (`-v`). A test using the same corpus but switching everything to fuzzy
-keys runs about 13x slower on my computer!
+keys runs about *13x slower* on my computer.
 
 
 ## API
@@ -494,6 +494,8 @@ keys runs about 13x slower on my computer!
 
 Unfortunately, you can't always expect perfect results with **correlate**
 every time.  You'll usually have to play with it at least a little.
+At its heart, **correlate** is a heuristic, not an exact technology.
+It often requires a bit of tuning before it produces the results you want.
 
 #### Ranking
 
