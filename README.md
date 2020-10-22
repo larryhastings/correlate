@@ -1037,8 +1037,8 @@ In the abstract, it looks like this:
             for key_a, weight_a that maps to value_a:
                 for key_b, weight_b that maps to value_b:
                     score = value of key_a compared to key_b
-                    cumulative_a = the sum of all scores resulting from key_a mapping to any value in dataset_a
-                    cumulative_b = the sum of all scores resulting from key_b mapping to any value in dataset_b
+                    cumulative_a = the sum of all scores resulting from key_a mapping to any value in dataset_b
+                    cumulative_b = the sum of all scores resulting from key_b mapping to any value in dataset_a
                     score_ratio_a = score / cumulative_a
                     score_ratio_b = score / cumulative_b
                     unweighted_score = score * score_ratio_a * score_ratio_b
