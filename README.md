@@ -515,6 +515,12 @@ stronger influence on the matches.
 If you have a low confidence in the ordering of your datasets,
 choose `ranking_bonus`, which only provides a little nudge.
 
+Ranking can also speed up **correlate** quite a bit.  If there are a
+lot of matches that end up with the same score, this can create a lot
+of work for the "match boiler" (see below), and that can get expensive
+quick.  Even a gentle nudge from ranking information can help differentiate
+scores enough to result in a *dramatic* speedup.
+
 #### Minimum Score
 
 Once you've plugged in all your data, you should run the correlation,
@@ -1453,6 +1459,32 @@ groups will remove at least one other value from consideration
 in that group, because that `value_a` or `value_b` is
 now "used" and so all remaining match using those values
 will be discarded.
+
+An example might help here.  Let's say you have these
+six matches in a row all with the same score:
+
+    match[1]: value_a = A1, value_b = B1
+    match[2]: value_a = A1, value_b = B2
+    match[3]: value_a = A2, value_b = B1
+    match[4]: value_a = A3, value_b = B2
+    match[5]: value_a = A10, value_b = B10
+    match[6]: value_a = A10, value_b = B11
+
+This would split into two "connected groups": matches 1-4
+would be in the first group, and matches 5-6 would be in the
+second.  Every match in the first group has one member
+(`value_a` or `value_b`) in common with at least one other
+match in the first group; every match in the second group
+has one member in common with at least one other match in
+the second group.  So every match in the first group is
+"connected"; if you put them in a graph, every match would
+be "reachable" from every other match in that group,
+even if they aren't directly connected.  For example,
+`match[4]` doesn't have any members in common with `match[1]`,
+but both of them have a member in common with `match[2]`.
+But none of the matches in the first group have any member in
+common with any of the matches in the second group (and
+naturally vice-versa).
 
 There's a utility function called `grouper()` that computes
 these connected groups.  (`grouper()` only handles the case
