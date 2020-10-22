@@ -805,9 +805,9 @@ in the following sub-sections.
 
 ### **correlate's** Six Passes And Big-O Complexity
 
-Here's a high-level overview of how **correlate** performs
-one correlation.
-**correlate** makes six passes over various sets of data.
+A single **correlate** correlation makes six passes over its data.
+Here's a high-level overview of those passes, followed by
+deep-dives into the new terms and technical details of those passes.
 
 **Pass 1**
 
@@ -1037,8 +1037,8 @@ In the abstract, it looks like this:
             for key_a, weight_a that maps to value_a:
                 for key_b, weight_b that maps to value_b:
                     score = value of key_a compared to key_b
-                    cumulative_a = the sum of all scores between key_a and all keys in dataset_b
-                    cumulative_b = the sum of all scores between key_b and all keys in dataset_a
+                    cumulative_a = the sum of all scores from key_a mapping to any value in dataset_b
+                    cumulative_b = the sum of all scores from key_b mapping to any value in dataset_a
                     score_ratio_a = score / cumulative_a
                     score_ratio_b = score / cumulative_b
                     unweighted_score = score * score_ratio_a * score_ratio_b
@@ -1054,7 +1054,7 @@ of reasons, the least of which is because we use their
 weights in computing the `final_score`.
 
 * `subtotal_score` is possibly further adjusted by `score_ratio_bonus`
-and ranking, if used, but those will be discussed later.
+and ranking, if used.  We'll discuss that later.
 
 This formula is how **correlate** computes a mathematical representation
 of "uniqueness".  The fewer values a key maps to in a dataset,
