@@ -1037,8 +1037,8 @@ In the abstract, it looks like this:
             for key_a, weight_a that maps to value_a:
                 for key_b, weight_b that maps to value_b:
                     score = value of key_a compared to key_b
-                    cumulative_a = the sum of all scores from key_a mapping to any value in dataset_b
-                    cumulative_b = the sum of all scores from key_b mapping to any value in dataset_a
+                    cumulative_a = the sum of all scores resulting from key_a mapping to any value in dataset_a
+                    cumulative_b = the sum of all scores resulting from key_b mapping to any value in dataset_b
                     score_ratio_a = score / cumulative_a
                     score_ratio_b = score / cumulative_b
                     unweighted_score = score * score_ratio_a * score_ratio_b
@@ -1063,7 +1063,7 @@ dataset scores 4x higher than a key mapped twice in each dataset.
 
 This scoring formula has a virtuous-feeling mathematical
 property I call *"conservation of score".*  Each key that
-you add to a round in a dataset adds 1 to the total cumulatve
+you add to a round in a dataset adds 1 to the total cumulative
 score of all possible matches; when you map a key to multiple
 values, you divide this score up evenly between those values.
 For example, if the key `x` is mapped to three values in `dataset_a`
