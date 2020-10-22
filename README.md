@@ -354,7 +354,7 @@ than exact keys.  If you can express your problem purely using exact keys,
 you should do so!  It'll run faster as a result.  You can get a sense of
 the speed difference by running `tests/ytjd.test.py` with verbose mode
 on (`-v`). A test using the same corpus but switching everything to fuzzy
-keys runs about *13x slower* on my computer.
+keys runs about *12x slower* on my computer.
 
 
 ## API
@@ -2047,8 +2047,8 @@ This really demonstrates how much slower fuzzy keys are.
 
 (To see for yourself, run `python3 tests/ytjd.test.py -v` and compare
 the slowest test to the fastest, using the same corpus.  On my computer
-the test without fuzzy keys is 14x faster than the one that uses
-fuzzy keys for everything!)
+the test without fuzzy keys is *12x faster* than the one that uses
+fuzzy keys for everything.)
 
 **0.7**
 
