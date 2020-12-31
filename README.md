@@ -2063,6 +2063,17 @@ the results.
 
 ## Version History
 
+**0.8.2**
+
+Fixed up ``infer_mv``.  It works the same, but the comments it
+prints out are now much improved.  In particular, there was
+a bug where it reported the same score for every match--the score
+of the lowest-ranked match--instead of the correct score for each
+match.
+
+There were no other changes; the **correlate** algorithm is
+unchanged from 0.8.1.
+
 **0.8.1**
 
 Fixed compatibility with Python 3.6.  All I needed to do was

@@ -10,7 +10,9 @@
 # http://github.com/larryhastings/correlate
 
 import correlate
+from datetime import datetime
 import os.path
+from os.path import join, normpath
 import shlex
 import sys
 
@@ -46,10 +48,11 @@ def _find_filenames(filenames):
                 if dirpath.startswith(("./", ".\\")):
                     dirpath = dirpath[2:]
                 dirnames.sort()
-                output_filenames.extend(_find_filenames((os.path.join(dirpath, filename) for filename in filenames)))
+                output_filenames.extend(_find_filenames((join(dirpath, filename) for filename in filenames)))
             continue
         output_filenames.append(filename)
 
+    output_filenames = [normpath(f) for f in output_filenames]
     output_filenames.sort()
     return output_filenames
 
@@ -78,6 +81,8 @@ result = c.correlate()
 old_dirs_to_rmdir = set()
 new_dirs_created = set()
 
+unmatched_source_files = [normpath(join(source_dir, x)) for x in result.unmatched_b]
+unmatched_destination_files = result.unmatched_a
 correct_names = []
 renames = []
 
@@ -93,23 +98,49 @@ for match in result.matches:
     if src == dst:
         correct_names.append(dst)
         continue
-    renames.append((src, dst))
+    renames.append((src, dst, match.score))
 
 
 
-print(f"# {len(result.matches)} matches")
-print(f"# {len(result.unmatched_b)} unmatched source files")
-print(f"# {len(result.unmatched_a)} unmatched files we can't rename")
-print(f"# {len(correct_names)} files that already have the correct name")
+def print_list(list, description):
+    d = description
+    if len(list) != 1:
+        d = d.replace("file", "files")
+        d = d.replace("has", "have")
+    ending_punctuation = ":" if len(list) != 0 else "."
+    print(f"# {len(list)} {d}{ending_punctuation}")
+
+    for file in list:
+        print(f"#   {shlex.quote(file)}")
+
+
+print("#!/bin/sh")
+print("#")
+print("#", datetime.now().strftime("%Y/%m/%d %H:%M:%S"))
+print("# produced using")
+
+quoted = [shlex.quote(a) for a in sys.argv[1:]]
+quoted.insert(0, "#  % infer_mv")
+line = " ".join(quoted)
+if len(line) > 78:
+    line = line[:73] + "[...]"
+print(line)
+
 print()
-
+print(f"# {len(result.matches)} matches")
+print_list(unmatched_source_files, "unmatched source file")
+print_list(unmatched_destination_files, "unmatched destination file we can't rename")
+print_list(correct_names, "file that already has the correct name")
 if not renames:
-    print("# nothing to do!")
+    print("\n# nothing to do!")
+
+if not (unmatched_source_files or unmatched_destination_files):
+    print("#\n# great! a perfect match.")
 
 def interesting_dir(dir):
     return dir and (dir not in (".", ".."))
 
-for src, dst in renames:
+for src, dst, score in renames:
     old_dir = os.path.dirname(src)
     if interesting_dir(old_dir):
         old_dirs_to_rmdir.add(old_dir)
@@ -119,12 +150,11 @@ for src, dst in renames:
         new_dirs_created.add(new_dir)
         print("mkdir", shlex.quote(new_dir))
 
-    print(f"# score {match.score}")
+    print()
+    print(f"# score {score}")
     print("mv", shlex.quote(src), shlex.quote(dst))
 
 old_dirs_to_rmdir -= new_dirs_created
 for old_dir in sorted(old_dirs_to_rmdir):
     print("rmdir", shlex.quote(old_dir))
 
-for file in result.unmatched_b:
-    print("# unmatched:", shlex.quote(file))
