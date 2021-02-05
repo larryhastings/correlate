@@ -42,7 +42,7 @@ import math
 # import pprint #debug
 import time
 
-__version__ = "0.8.2"
+__version__ = "0.8.3"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -889,7 +889,13 @@ class Correlator:
                     self.print(f"        exact keys")
                 for round_number, (keys, weights) in enumerate(exact_round):
                     self.print(f"            round {round_number}")
-                    keys = list(sorted(keys))
+                    type_to_keys = defaultdict(list)
+                    for key in keys:
+                        type_to_keys[type(key)].append(key)
+                    keys = []
+                    key_types = sorted(type_to_keys.keys(), key=lambda t: str(t))
+                    for key_type in key_types:
+                        keys.extend(sorted(type_to_keys[key_type]))
                     for key in keys:
                         # weights in exact_round are pre-divided by key count!
                         # let's print the unmodified weight.
@@ -955,7 +961,8 @@ class Correlator:
                         assert round <= previous_round
 
             # invariant: at least one key maps to every value
-            assert not unused_indices
+            if unused_indices:
+                raise ValueError(f"dataset {dataset.id}: {len(unused_indices)} values with no keys! " + " ".join(f"#{unused}={dataset.values[unused]}" for unused in unused_indices))
 
         # self.print("    validated!") #debug
         # self.print() #debug

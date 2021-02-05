@@ -2063,6 +2063,24 @@ the results.
 
 ## Version History
 
+
+**0.8.3**
+
+A slight bugfix for `print_datasets()`.   `print_datasets()`
+prints out the keys for each value in sorted order.  But that
+meant sorting the keys, and if you have keys of disparate
+types, attempting to compare them with `<` or `>` could throw
+a `ValueError`.  So `print_datasets()` now separates the keys
+by type and sorts and prints each list of keys separately.
+
+The dataset API allows you to set values that don't actually have
+any keys mapping to them.  (You can call `dataset.value()`
+with a value that you never pass in to `set()` or `set_keys()`.)
+`correlate()` used to simply assert that every value had at
+least one key; now it raises a `ValueError` with a string
+that prints every value.  (This can be unreadable if there
+are a lot!  But better safe than sorry.)
+
 **0.8.2**
 
 Fixed up ``infer_mv``.  It works the same, but the comments it
