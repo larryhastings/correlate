@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # infer_mv
-# Copyright 2019-2020 by Larry Hastings
+# Copyright 2019-2021 by Larry Hastings
 #
 # A sample script demonstrating one possible use for "correlate".
 # See usage for more information.

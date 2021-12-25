@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2020 by Larry Hastings
+# Copyright 2019-2021 by Larry Hastings
 #
 # Correlates two sets of things
 # by scanning over data sets,
@@ -42,7 +42,7 @@ import math
 # import pprint #debug
 import time
 
-__version__ = "0.8.3"
+__version__ = "1.0"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
