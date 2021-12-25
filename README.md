@@ -2,77 +2,52 @@
 
 ## A clever brute-force correlator for kinda-messy data
 
-##### Copyright 2019-2020 by Larry Hastings
+##### Copyright 2019-2021 by Larry Hastings
 
 
 ## Overview
 
-Let's say you've downloaded a bunch of video files that represent
-a season of a (presumably public domain!) TV show.  But the filenames
-are terrible.  And let's say you have some very clean data from
-Wikipedia with the correct titles for all the episodes.
-So the word *"Neurostim"* appears in both places.
+**correlate** is a data analysis library.  It's designed to find
+matches between two datasets that conceptually represent the
+same information, just in different formats.  Its goal is to
+tell you "value *A* in the first dataset is a good match for
+value *B* in the second dataset".
 
-If you're as fastidious as I am, you want to rename the video files
-so they have nice clean names.  You *could* do it by hand.
-But what if there are a lot of episodes?
-And what do you do if there's an update of the video files?
-Do you want to redo the correlation by hand every time there's an update?
+To use **correlate**, you feed in the two datasets of (opaque) values
+and their associated metadata information.  **correlate** uses the
+metadata to find matches between the two datasets, ranks these matches
+using a unique scoring heuristic, and returns the matches.
 
-Obviously you'd like to automate this.  You want
-to match up each filename with its equivalent listing from Wikipedia. The
-thing is, it's real-world data--and it's probably a little messy.
-Perhaps they aren't in the exact same order.  And while some matches are
-obvious, others are less so.  Maybe some episodes are missing in your
-directory, or maybe Wikipedia's list is incomplete.
-
-How can you *automate* this process?
-
-**correlate** solves this problem for you.  It correlates values between
-two messy but strongly-related datasets.
-
-How it works: you submit your two datasets to
-**correlate**, showing it each value, and mining the data and metadata for
-"keys" that map to that value.  You then set **correlate** to work.
-It thinks for a while, then produces its best guess as to how to match
-the two sets.  And its best guess is... hey, that's pretty good!
-
-In essense, **correlate** uses the uniqueness of keys as clues to find
-its matches.  If there's a key present in both datasets, but it only maps
-to one value in each dataset, odds are good that those two values
-should be matched together.
-
-That's the basics.  **correlate** also supports some advanced features:
-
-* A key mapping can optionally specify a *weight*.
-* You can map a key *multiple times.*
-* Keys can be *fuzzy keys,* keys that may only partially match each other.
-* The order of values can inform the matches.  **correlate** calls this *ranking.*
 
 ### Quick Start
 
 This code:
 
+```Python
     import correlate
 
     c = correlate.Correlator()
     a, b = c.datasets
 
-    a.set("this", "greg")
-    a.set("is", "greg")
-    a.set("Greg", "greg", weight=5)
-    a.set_keys("Carol over here".split(), "carol")
-    a.set_keys("My name is Tony".split(), "tony")
-    a.set_keys("Hi I'm Steve".split(), "steve", weight=2)
+    greg, carol, tony, steve = "greg carol tony steve".split()
+    Greg, Carol, Tony, Steve = "Greg Carol Tony Steve".split()
 
-    b.set_keys("gosh my name is Greg".split(), "Greg")
-    b.set_keys("Carol is my name".split() , "Carol")
-    b.set_keys("Pretty sure I'm still Tony".split(), "Tony")
-    b.set_keys("I'm Steve".split(), "Steve")
+    a.set("this", greg)
+    a.set("is", greg)
+    a.set("Greg", greg, weight=5)
+    a.set_keys("Carol over here".split(), carol)
+    a.set_keys("My name is Tony".split(), tony)
+    a.set_keys("Hi I'm Steve".split(), steve, weight=2)
+
+    b.set_keys("gosh my name is Greg".split(), Greg)
+    b.set_keys("Carol is my name".split() , Carol)
+    b.set_keys("Pretty sure I'm still Tony".split(), Tony)
+    b.set_keys("I'm Steve".split(), Steve)
 
     result = c.correlate()
     for match in result.matches:
         print(f"{match.score:1.3f} {match.value_a:>5} -> {match.value_b}")
+```
 
 produces this output:
 
@@ -91,7 +66,7 @@ and the episode numbers are almost wholly absent.
 
 This podcast also has a
 list of episodes on its website. This data is *much* cleaner,
-including nice proper (unique!) episode numbers.  And it's easily
+including clean, proper episode numbers.  And it's easily
 scraped.  But it's still not perfect.
 The two lists of episodes aren't exactly the same, and even the episodes
 that are present in both are sometimes reordered.
@@ -100,7 +75,7 @@ Obviously, I want to take the MP3s from the RSS feed,
 and match them up with the nice clean metadata scraped from the website.
 This gets me the best of both worlds.
 
-But there are more than *six hundred* episodes of this
+But there are more than *seven hundred* episodes of this
 particular podcast!  Matching those by hand would be a *lot* of work.
 And we get a new episode every week.
 And sometimes they actually add back in old episodes, or update the
@@ -116,24 +91,24 @@ datasets, **correlate** did a perfect job.
 
 The insight that inspired **correlate** is this:
 unique keys in the two datasets are probably very good matches.
-Let's say the key `"egyptian"` maps to value *A1* in `dataset_a`
-and value *B1*  in `dataset_b`--and it *only* maps to those two
+Let's say the key `"egyptian"` maps to value *A1* in one dataset
+and value *B1*  in the other dataset--and it *only* maps to those two
 values.  In that case, *A1* and *B1* are probably a match.
 
-This leads to a virtuous cycle.
-Let's say the word `"nickel"` maps to two values in each of the
-two datasets: *A1* and *A2*, and *B1* and *B2*.
-We have two options to match those four values:
+This leads to a virtuous cycle.  Let's say the word `"nickel"`
+maps to two values in each of the two datasets: *A1* and *A2*,
+and *B1* and *B2*.  We have two options to match those four values:
 
     A1->B1 and A2->B2
     or
     A1->B2 and A2->B1
 
-But the key `"egyptian"` already helped us choose *A1* and *B1* as
-a good match.  Since we already know those are a match, that
-eliminates the second option.  Our only choice now is to match
-to *A2* -> *B2*.  Choosing a good match based on `"egyptian"` helped
-us to eliminated choices and make a good choice for `"nickel"`, too.
+But the key `"egyptian"` already told us *A1* and *B1* is
+a good match.  Since we've already matched those, that
+eliminates the second option.  Our only remaining choice is matching
+*A2* -> *B2*.  Choosing a good match based on `"egyptian"` helped
+us to eliminated extraneous possibilities and make a good choice
+based on `"nickel"`, too.
 
 In short, **correlate** capitalizes on the *relative uniqueness*
 of keys.
@@ -2063,6 +2038,10 @@ the results.
 
 ## Version History
 
+**1.0**
+
+No code changes.  But **correlate** has been stable and working
+for a while now... it's time to mark it as 1.0.
 
 **0.8.3**
 
