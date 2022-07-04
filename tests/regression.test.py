@@ -16,6 +16,8 @@ import traceback
 
 from correlate import *
 
+from rapidfuzz.fuzz import ratio
+
 original_print = print
 def print(*a, sep=" "):
     s = sep.join(str(o) for o in a)
@@ -436,6 +438,54 @@ def grouper_reuse_b_test(verbose):
     assert result == make_reuse_test_result(test_matches)
 
 
+class StringFuzzyKey(FuzzyKey):
+    def __repr__(self):
+        return f"<StringFuzzyKey {self.s!r}>"
+
+    def __init__(self, s, *, minimum_score=0):
+        self.s = s
+        self.lower_s = s.lower()
+        self.minimum_score = minimum_score
+
+    def compare(self, other):
+        score = (ratio(self.lower_s, other.lower_s) / 100) - self.minimum_score
+        if score < 0:
+            return 0.0
+        if self.minimum_score != 1:
+            score = score / (1.0 - self.minimum_score)
+        return score
+
+def dont_use_rounds_for_fuzzy_keys_test(verbose):
+    horse = StringFuzzyKey("horse")
+    hors  = StringFuzzyKey("hors")
+    hhhhh = StringFuzzyKey("hhhhh")
+    sssss = StringFuzzyKey("sssss")
+
+    va = object()
+    vb = object()
+
+    c = Correlator()
+    a, b = c.datasets
+
+    a.set(horse, va)
+    a.set(horse, va)
+    a.set(hhhhh, va)
+
+    b.set(horse, vb)
+    b.set(hors, vb)
+    b.set(sssss, vb)
+
+    # the matches we want:
+    #   horse (round 0) -> horse : score 1.0
+    #   horse (round 1) -> hors  : score 0.88888
+    # we also get a hit ratio bonus of 0.6
+    # so if all goes well, we get a score of just over 2.5.
+
+    result = c.correlate()
+    assert result.matches[0].score > 2.5
+
+
+
 ##
 ##
 ##
@@ -475,7 +525,7 @@ def main(argv):
         usage(f"unknown flag {arg}")
 
     tests_to_run.update(set(argv))
-    print_header = False
+    print_header = verbose
 
     tests_run = 0
     successes = 0
