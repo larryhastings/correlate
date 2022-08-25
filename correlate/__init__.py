@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2021 by Larry Hastings
+# Copyright 2019-2022 by Larry Hastings
 #
 # Correlates two sets of things
 # by scanning over data sets,
@@ -820,7 +820,7 @@ class Correlator:
                             # Very, very little.  The average error is < 1.5e-17.
                             # Uh, yeah, I can live with that for a 1% speedup.
                             d[key] = score
-                    rounds = [(set(d), d) for d in rounds]
+                    rounds = [(frozenset(d), d) for d in rounds]
 
                 exact_rounds.append(rounds)
 
@@ -1059,7 +1059,7 @@ class Correlator:
 
         # here we compute all_indexes, the list of indexes to compute as possible matches.
         # we compute this list as follows:
-        #     store all indexes in all_indexes,
+        #     store all indexes in all_indexes (a set),
         #     then convert to a list and sort.
         #
         # it's measurably faster than my old approach, which used a custom iterator:
