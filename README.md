@@ -425,6 +425,12 @@ keys runs about *12x slower* on my computer.
 > representing the ranking; if this value is the 19th in the dataset,
 > you should supply `ranking=19`.
 
+`Correlator.Dataset.clear(default_weight=1, *, id=None)`
+
+> Clears the Dataset.  Reinitializes it to its empty state.
+> You can optionally also change the dataset's default weight
+> and its id.
+
 `CorrelatorResult()`
 
 > The class for objects returned by `Correlator.correlate()`.

@@ -652,14 +652,19 @@ class Correlator:
 
     class Dataset:
         def __init__(self, default_weight=1, *, id=None):
+            self.clear(default_weight, id=id)
 
-            self.id = id
-            self.default_weight = default_weight
-
+        def clear(self, default_weight=None, *, id=None):
             # we store the data in the dataset in a compact
             # and easy-to-modify format.  when we actually
             # do the correlation, we cache the data in a much
             # more performance-optimized format.
+
+            self.id = id
+            if default_weight == None:
+                assert getattr(self, "default_weight", 0), "no default_weight was ever set!"
+            else:
+                self.default_weight = default_weight
 
             # self.values[index] = value
             self.values = []
@@ -690,7 +695,6 @@ class Correlator:
             self._rankings_count = 0
 
             self._max_round = 0
-
 
         def __repr__(self):
             return f"<Dataset {self.id}>"

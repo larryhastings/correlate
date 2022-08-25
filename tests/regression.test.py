@@ -101,6 +101,44 @@ def smoke_test(verbose):
             assert "unmatched" in value
 
 
+def dataset_clear_test(verbose):
+    """
+    Test dataset.clear.
+    """
+
+    c = Correlator()
+    a, b = c.datasets
+
+    a.set_keys("greg a b c".split(), "greg")
+    a.set_keys("steve b c d".split(), "steve")
+    a.set_keys("tony c d e".split(), "tony")
+
+    b.set_keys("greg a b".split(), "greg")
+    b.set_keys("tony".split(), "tony")
+
+    result = c.correlate()
+    if verbose:
+        print("before clear:")
+        pprint("  matches", result.matches)
+        pprint("  unmatched a", result.unmatched_a)
+        pprint("  unmatched b", result.unmatched_b)
+    assert len(result.matches) == 2, f"result.matches={result.matches} should be length 2, but it's length {len(result.matches)}!"
+    for match in result.matches:
+        assert match.value_a == match.value_b, f"{match.value_a=} != {match.value_b=} !!"
+
+    b.clear()
+    b.set_keys("steve c d".split(), "steve")
+    result = c.correlate()
+    if verbose:
+        print("after clear:")
+        pprint("  matches", result.matches)
+        pprint("  unmatched a", result.unmatched_a)
+        pprint("  unmatched b", result.unmatched_b)
+    assert len(result.matches) == 1, f"result.matches={result.matches} should be length 2, but it's length {len(result.matches)}!"
+    for match in result.matches:
+        assert match.value_a == match.value_b, f"{match.value_a=} != {match.value_b=} !!"
+
+
 def fuzzy_rounds_stress_test(verbose):
     """
     in each round of fuzzy keys, we use only the highest scoring match
