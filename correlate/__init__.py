@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2022 by Larry Hastings
+# Copyright 2019-2023 by Larry Hastings
 #
 # Correlates two sets of things
 # by scanning over data sets,
@@ -42,7 +42,7 @@ import math
 # import pprint #debug
 import time
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -631,11 +631,13 @@ class CorrelatorRankingApproach(enum.IntEnum):
     BestRanking = 1,
     AbsoluteRanking = 2,
     RelativeRanking = 3,
+    ReversedAbsoluteRanking = 4,
 
 RankingNotUsed = CorrelatorRankingApproach.RankingNotUsed
 BestRanking = CorrelatorRankingApproach.BestRanking
 AbsoluteRanking = CorrelatorRankingApproach.AbsoluteRanking
 RelativeRanking = CorrelatorRankingApproach.RelativeRanking
+ReversedAbsoluteRanking = CorrelatorRankingApproach.ReversedAbsoluteRanking
 
 
 def defaultdict_list():
@@ -1172,7 +1174,7 @@ class Correlator:
             def add(self, index_a, index_b, score):
                 self.matches.append(CorrelatorMatch(index_a, index_b, score))
 
-        absolute_correlations = relative_correlations = None
+        absolute_correlations = relative_correlations = reversed_absolute_correlations = None
 
         if ranking_factor and ranking_bonus:
             raise RuntimeError("correlate: can't use ranking_factor and ranking_bonus together")
@@ -1180,12 +1182,16 @@ class Correlator:
             (ranking_factor or ranking_bonus)
             and (a._rankings_count > 1)
             and (b._rankings_count > 1)
+            and (ranking != RankingNotUsed)
             )
         if using_rankings:
+            assert ranking in (BestRanking, AbsoluteRanking, RelativeRanking, ReversedAbsoluteRanking)
             if ranking in (AbsoluteRanking, BestRanking):
                 absolute_correlations = Correlations("AbsoluteRanking")
             if ranking in (RelativeRanking, BestRanking):
                 relative_correlations = Correlations("RelativeRanking")
+            if ranking in (ReversedAbsoluteRanking, BestRanking):
+                reversed_absolute_correlations = Correlations("ReversedAbsoluteRanking")
 
             ranking_range_a = a._highest_ranking - a._lowest_ranking
             ranking_range_b = b._highest_ranking - b._lowest_ranking
@@ -1414,7 +1420,7 @@ class Correlator:
                 continue
 
             # self.print(f"    {score} pre-ranking score") #debug
-            absolute_score = relative_score = score
+            absolute_score = relative_score = reversed_absolute_score = score
             ranking_a = self.dataset_a._ranking(index_a)
             ranking_b = self.dataset_b._ranking(index_b)
 
@@ -1425,19 +1431,24 @@ class Correlator:
 
                 absolute_distance_factor = 1 - (abs(ranking_a - ranking_b) / widest_ranking_range)
 
+                reversed_absolute_distance_factor = 1 - (abs((ranking_range_a - ranking_a) - (ranking_range_b - ranking_b)) / widest_ranking_range)
+
                 # self.print() #debug
                 # self.print(f"    ranking factors:") #debug
-                # self.print(f"        {absolute_distance_factor=}") #debug
-                # self.print(f"        {relative_distance_factor=}") #debug
+                # self.print(f"                {absolute_distance_factor=}") #debug
+                # self.print(f"                {relative_distance_factor=}") #debug
+                # self.print(f"       {reversed_absolute_distance_factor=}") #debug
 
                 if ranking_factor:
                     # self.print(f"    applying {ranking_factor=}") #debug
                     absolute_score *= one_minus_ranking_factor + (ranking_factor * absolute_distance_factor)
                     relative_score *= one_minus_ranking_factor + (ranking_factor * relative_distance_factor)
+                    reversed_absolute_score *= one_minus_ranking_factor + (ranking_factor * reversed_absolute_distance_factor)
                 elif ranking_bonus:
                     # self.print(f"    applying {ranking_bonus=}") #debug
                     absolute_score += ranking_bonus * absolute_distance_factor
                     relative_score += ranking_bonus * relative_distance_factor
+                    reversed_absolute_score += ranking_bonus * reversed_absolute_distance_factor
             else:
                 # if we don't have valid ranking for both sides,
                 # and ranking_factor is in use,
@@ -1447,16 +1458,20 @@ class Correlator:
                     # self.print(f"    applying {ranking_factor=}") #debug
                     absolute_score *= one_minus_ranking_factor
                     relative_score *= one_minus_ranking_factor
+                    reversed_absolute_score *= one_minus_ranking_factor
 
             # self.print(f"    final scores:") #debug
-            # self.print(f"        {absolute_score=}") #debug
-            # self.print(f"        {relative_score=}") #debug
+            # self.print(f"                 {absolute_score=}") #debug
+            # self.print(f"                 {relative_score=}") #debug
+            # self.print(f"        {reversed_absolute_score=}") #debug
             # self.print() #debug
 
             if absolute_correlations is not None:
                 absolute_correlations.add(index_a, index_b, absolute_score)
             if relative_correlations is not None:
                 relative_correlations.add(index_a, index_b, relative_score)
+            if reversed_absolute_correlations is not None:
+                reversed_absolute_correlations.add(index_a, index_b, reversed_absolute_score)
 
         end = time.perf_counter()
         delta = end - pass_start
