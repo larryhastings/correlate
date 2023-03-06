@@ -1618,9 +1618,9 @@ But how do you compute that distance?  What do the ranking numbers mean?
 **correlate** supports three possible interpretations
 of the rankings:
 
-* *Absolute* ranking,
-* *Relative* ranking, and
-* *Reversed Absolute* ranking.
+* *Absolute* ranking (`correlate.AbsoluteRanking`),
+* *Relative* ranking (`correlate.RelativeRanking`), and
+* *Reversed Absolute* ranking (`correlate.ReversedAbsoluteRanking`).
 
 These three approaches differ in how they compare the ranking numbers,
 as follows:
