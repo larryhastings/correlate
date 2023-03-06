@@ -1668,9 +1668,10 @@ has 801 items ranked 0 to 800, and we have a value in
   in front of the last (highest-ranked) value.
 
 Which one does **correlate** use?  It's configurable with the `ranking`
-parameter to `correlate()`.  By default it uses the "best" ranking.
-"Best" ranking means **correlate** compute a score using *all*
-methods and chooses the one with the highest score.
+parameter to `correlate()`.  By default it uses the "best" ranking
+(`correlate.BestRanking`).
+"Best" ranking means **correlate** tries *every* ranking approach
+and keeps the one with the highest score.
 You can override this by supplying a different value to `ranking`
 but this shouldn't be necessary.  (Theoretically it should be faster
 to use only one ranking approach.  Unfortunately this hasn't been
