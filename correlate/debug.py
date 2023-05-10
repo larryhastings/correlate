@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate debug preprocessor
-# Copyright 2021 by Larry Hastings
+# Copyright 2021-2023 by Larry Hastings
 #
 # Rewrites ./__init__.py to turn on/off or toggle debug statements.
 # Any line that ends with the six characters "#debug" is a "debug" statement;

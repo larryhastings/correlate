@@ -2,7 +2,7 @@
 
 ## A clever brute-force correlator for kinda-messy data
 
-##### Copyright 2019-2021 by Larry Hastings
+##### Copyright 2019-2023 by Larry Hastings
 
 
 ## Overview
@@ -1615,9 +1615,14 @@ the two values and let that distance influence the score.  The closer
 the two values are to each other, the higher the resulting score.
 
 But how do you compute that distance?  What do the ranking numbers mean?
-**correlate** supports two possible interpretations
-of the rankings, what we'll call *absolute* and *relative* ranking.
-These two approaches differ in how they compare the ranking numbers,
+**correlate** supports three possible interpretations
+of the rankings:
+
+* *Absolute* ranking (`correlate.AbsoluteRanking`),
+* *Relative* ranking (`correlate.RelativeRanking`), and
+* *Reversed Absolute* ranking (`correlate.ReversedAbsoluteRanking`).
+
+These three approaches differ in how they compare the ranking numbers,
 as follows:
 
 * *Absolute* ranking assumes the ranking numbers are the same
@@ -1636,18 +1641,37 @@ as follows:
   is calculated similarly for both datasets, and the distance
   between two values is the distance between these two percentages.
   This works well if one or both of your datasets are sparse.
+* *Reversed Absolute* is like *Absolute*, but starts from the
+  *end* rather than from the *beginning.*  Think about *Absolute*
+  ranking this way: it's comparing the distance from
+  beginning of the dataset to the particular value.  Well,
+  *Reversed Absolute* uses the distance from the *end* of the
+  dataset to the particular value.  Consider: if `dataset_a`
+  contains 100 values, and `dataset_b` only contains 15 values,
+  but they're matches for the *last* 15 values of `dataset_a`,
+  neither *Absolute* nor *Relative* are a good fit.  What you'd
+  want there is *Reversed Absolute*.
 
-For example, if `dataset_a` had 100 items ranked 1 to 100,
-and `dataset_b` had 800 items ranked 1 to 800, a value to
-`dataset_a` with `ranking=50` in *absolute* ranking
-would be considered closest to a value in `dataset_b` with `ranking=50`,
-but when using *relative* ranking
-it'd be considered closest to a value in `dataset_b` with `ranking=400`.
+Here's a more concrete example of how these approaches work.
+Let's say `dataset_a` has 101 items ranked 0 to 100, `dataset_b`
+has 801 items ranked 0 to 800, and we have a value in
+`dataset_a` with `ranking=50`:
+
+* With *Absolute* ranking, the closest value in `dataset_b` would have
+  `ranking=50`.  The two values are both 50 elements after
+  the first (lowest-ranked) value.
+* With *Relative* ranking, the closest value in `dataset_b` would have
+  `ranking=400`.  The two values are in the middle of the
+  rankings for their respective datasets.
+* With *Reversed Absolute* ranking, the closest value in `dataset_b`
+  would have `ranking=750`.  The two value are both 50 elements
+  in front of the last (highest-ranked) value.
 
 Which one does **correlate** use?  It's configurable with the `ranking`
-parameter to `correlate()`.  By default it uses the "best" ranking.
-"Best" ranking means **correlate** compute a score using *both*
-methods and chooses the one with the highest score.
+parameter to `correlate()`.  By default it uses the "best" ranking
+(`correlate.BestRanking`).
+"Best" ranking means **correlate** tries *every* ranking approach
+and keeps the one with the highest score.
 You can override this by supplying a different value to `ranking`
 but this shouldn't be necessary.  (Theoretically it should be faster
 to use only one ranking approach.  Unfortunately this hasn't been
@@ -2043,6 +2067,11 @@ the results.
 
 
 ## Version History
+
+**1.1**
+
+Added a new ranking approach!  The first two were `AbsoluteRanking`
+and `RelativeRanking`, this new third one is `ReversedAbsoluteRanking`.
 
 **1.0**
 
