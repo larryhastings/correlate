@@ -139,6 +139,31 @@ def dataset_clear_test(verbose):
         assert match.value_a == match.value_b, f"{match.value_a=} != {match.value_b=} !!"
 
 
+def prenormalized_minimum_score_test(verbose):
+    """
+    Test using minimum_score with correlate(normalized=True).
+    """
+
+    c = Correlator()
+    a, b = c.datasets
+
+    a.set_keys("greg a b c d".split(), "greg")
+    a.set_keys("steve a b c d".split(), "steve")
+    a.set_keys("tony a b c d".split(), "tony")
+
+    b.set_keys("tony a b c".split(), "tony")
+    b.set_keys("mitch c".split(), "mitch")
+
+    result = c.correlate(prenormalize=True, minimum_score=0.3)
+    if verbose:
+        pprint("matches", result.matches)
+        pprint("unmatched a", result.unmatched_a)
+        pprint("unmatched b", result.unmatched_b)
+    assert len(result.matches) == 1, f"result.matches={result.matches} should be length 1, but it's length {len(result.matches)}!"
+    for match in result.matches:
+        assert match.value_a == match.value_b, f"{match.value_a=} != {match.value_b=} !!"
+
+
 def fuzzy_rounds_stress_test(verbose):
     """
     in each round of fuzzy keys, we use only the highest scoring match
@@ -543,7 +568,7 @@ def usage(error=None):
     print("Runs one or more discrete regression / smoke tests.")
     print()
     print("You can optionally specify which tests you want run.  Current tests:")
-    for test in tests:
+    for test in sorted(tests):
         print(f"    {test}")
     print()
     print("-v or --verbose turns on verbose output.")

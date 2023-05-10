@@ -35,6 +35,7 @@ unique or fuzzy keys between the two datasets.
 #         but how do you do that!?
 #             some sort of binary partitioning.  a la BSPs?
 
+import bisect
 from collections import defaultdict
 import enum
 import itertools
@@ -90,6 +91,11 @@ def item_key_score(item):
     return item.score
 
 def sort_matches(matches):
+    """
+    Sorts an array of CorrelatorMatch objects.
+    Note that it sorts in *ascending* order,
+    as that's what the MatchBoiler wants.
+    """
     matches.sort(key=item_key_score)
 
 def grouper(matches):
@@ -975,6 +981,7 @@ class Correlator:
 
     def correlate(self,
             *,
+            prenormalize=False,
             minimum_score=0,
             score_ratio_bonus=1,
             ranking=BestRanking,
@@ -1489,13 +1496,21 @@ class Correlator:
         for correlations in all_correlations:
             matches = correlations.matches
             sort_matches(matches)
+
+            if prenormalize:
+                # note that sort_matches sorts in ascending order
+                # aka lowest to highest
+                # (that's what the match boiler wants)
+                high = matches[-1].score
+                low = matches[0].score
+                delta = high - low
+                for match in matches:
+                    match.score = (match.score - low) / delta
+
             # throw away matches with score < minimum_score
-            for i, item in enumerate(matches):
-                if item.score > minimum_score:
-                    matches = matches[i:]
-                    break
-            else:
-                matches = []
+            if minimum_score:
+                i = bisect.bisect_left(matches, minimum_score, key=lambda match: match.score)
+                matches = matches[i:]
 
             total_matches = len(matches)
             start = time.perf_counter()
