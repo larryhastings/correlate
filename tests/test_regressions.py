@@ -8,11 +8,17 @@
 # Part of the "correlate" package:
 # http://github.com/larryhastings/correlate
 
+
+import correlatetestlib
+correlatetestlib.preload_local_correlate()
+
+
 import itertools
 import os.path
 import random
 import sys
 import traceback
+
 
 from correlate import *
 

@@ -8,6 +8,10 @@
 # Part of the "correlate" package:
 # http://github.com/larryhastings/correlate
 
+import correlatetestlib
+correlatetestlib.preload_local_correlate()
+
+
 import builtins
 import correlate
 import datetime
