@@ -90,6 +90,14 @@ class FuzzyKey:
 def item_key_score(item):
     return item.score
 
+def attempt_sorted(iterable):
+    l = list(iterable)
+    try:
+        l.sort()
+    except TypeError:
+        pass
+    return l
+
 def sort_matches(matches):
     """
     Sorts an array of CorrelatorMatch objects.
@@ -1362,9 +1370,9 @@ class Correlator:
 
                 cumulative_base_score += len(keys_intersection) * 2
 
-                # sorted_a = "{" + ", ".join(list(sorted(keys_a))) + "}" #debug
-                # sorted_b = "{" + ", ".join(list(sorted(keys_b))) + "}" #debug
-                # sorted_intersection = "{" + ", ".join(list(sorted(keys_intersection))) + "}" #debug
+                # sorted_a = "{" + ", ".join(str(s) for s in attempt_sorted(keys_a)) + "}" #debug
+                # sorted_b = "{" + ", ".join(str(s) for s in attempt_sorted(keys_b)) + "}" #debug
+                # sorted_intersection = "{" + ", ".join(str(s) for s in attempt_sorted(keys_intersection)) + "}" #debug
                 # self.print(f"        keys in a {sorted_a}") #debug
                 # self.print(f"        keys in b {sorted_b}") #debug
                 # self.print(f"        keys in common {sorted_intersection}") #debug
