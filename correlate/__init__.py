@@ -17,6 +17,29 @@ unique or fuzzy keys between the two datasets.
 """
 
 # TODO:
+#
+#   * speedup for non-hashable values
+#       * if a value is hashable, we use it as a key in a dict
+#         to find the index.
+#       * if a value isn't hashable, right now we look it up
+#         in the values list directly.
+#       * if 90% of values are hashable and 10% aren't,
+#         that means that for non-hashable values, 9/10 of
+#         the values we check when trying to find a value
+#         are values we already know are wrong.
+#       * so: store non-hashable values in a second array
+#         just for these lookups, with a parallel array
+#         containing the indices.
+#
+#         all_values
+#         ['a', 'b', o, o2, 34]
+#         hashable
+#         {'a':0, 'b':1, 34:4}
+#         unhashable
+#         [o, o2]
+#         unhashable index
+#         [2, 3]
+#
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
 #         two rankings for a and b are absolute and should be the same.
