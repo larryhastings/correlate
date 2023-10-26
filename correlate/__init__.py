@@ -32,13 +32,27 @@ unique or fuzzy keys between the two datasets.
 #         containing the indices.
 #
 #         all_values
-#         ['a', 'b', o, o2, 34]
+#             ['a', 'b', o, o2, 34]
 #         hashable
-#         {'a':0, 'b':1, 34:4}
+#             {'a':0, 'b':1, 34:4}
 #         unhashable
-#         [o, o2]
+#             [o, o2]
 #         unhashable index
-#         [2, 3]
+#             [2, 3]
+#         lookup method, to find the 'index' for 'value':
+#             if hashable: # <-- optimization, see below
+#                 index = hashable.get(value, None)
+#                 if index is not None: return index
+#             index_index = unhashable.index(value) # let this raise if not found
+#             return unhashable_index[index_index]
+#       * note that this only helps when you have a mix of
+#         hashable and non-hashable values:
+#           * if you have all hashable values, you're already fast.
+#           * if you have no hashable values, then all_values and unhashable
+#             are gonna be the same array
+#
+#       * also: only try the "hashable" dict if it is not empty.
+#         (if there are no hashable values, why bother trying hashable first?)
 #
 #   * possible new ranking approach
 #       * take the highest-scoring (pre-ranking) match, then assume that the
