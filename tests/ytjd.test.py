@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2023 by Larry Hastings
+# Copyright 2019-2026 by Larry Hastings
 #
 #
 #
@@ -29,6 +29,8 @@ tests = [
     # on my computer, this first test is 14x faster
     # than the slowest test using the "best" corpus.
     # (see?  fuzzy keys make everything slow!)
+
+    #1
     {
     "dataset_b": "best",
     "use_fuzzy_title": False,
@@ -36,6 +38,7 @@ tests = [
     "use_episode_number_as" : "exact key",
     },
 
+    #2
     {
     "dataset_b": "best",
     "use_fuzzy_title": False,
@@ -43,6 +46,7 @@ tests = [
     "use_episode_number_as" : "ranking",
     },
 
+    #3
     {
     "dataset_b": "script_first_pages",
     "use_fuzzy_title": False,
@@ -50,6 +54,7 @@ tests = [
     "use_episode_number_as" : "ranking",
     },
 
+    #4
     {
     "dataset_b": "best",
     "use_fuzzy_title": False,
@@ -57,6 +62,7 @@ tests = [
     "use_episode_number_as" : "ranking",
     },
 
+    #5
     {
     "dataset_b": "script_first_pages",
     "minimum_score": 0.2,
@@ -66,6 +72,7 @@ tests = [
     "use_episode_number_as" : "fuzzy key",
     },
 
+    #6
     {
     "dataset_b": "best",
 
@@ -74,6 +81,7 @@ tests = [
     "use_episode_number_as" : "fuzzy key",
     },
 
+    #7
     {
     "dataset_b": "script_first_pages",
     "minimum_score": 0.1,
@@ -83,6 +91,7 @@ tests = [
     "use_episode_number_as" : "ranking",
     },
 
+    #8
     {
     "dataset_b": "best",
 
@@ -91,6 +100,7 @@ tests = [
     "use_episode_number_as" : "ranking",
     },
 
+    #9
     {
     "dataset_b": "script_first_pages",
     "minimum_score": 0.2,
@@ -100,6 +110,7 @@ tests = [
     "use_episode_number_as" : "fuzzy key",
     },
 
+    #10
     {
     "dataset_b": "best",
 
@@ -186,6 +197,7 @@ def main(argv):
         correct, incorrect = t(verbose)
         if incorrect:
             print(f"Test #{i} had {correct} correct matches and {incorrect} matching failures!")
+            print("    Highest score for a bad match:", t.highest_bad_match_score)
             failures += 1
     if failures:
         print(f"{failures} tests out of {tests_run} failed.")
@@ -218,6 +230,8 @@ class YTJDTest:
         self.score_ratio_bonus = 0.5
         self.minimum_score = 0
         self.ranking_factor = 0.4
+
+        self.highest_bad_match_score = 0
 
         self.c = correlate.Correlator()
 
@@ -300,6 +314,7 @@ class YTJDTest:
                     print(f"{prefix}but shouldn't have matched anything!")
                 print()
                 incorrect += 1
+                self.highest_bad_match_score = max(self.highest_bad_match_score, match.score)
 
         # print("UNMATCHED B", result.unmatched_b)
         for unmatched in result.unmatched_b:
@@ -356,6 +371,7 @@ class YTJDTest:
             correct_matches.append(correct_match)
 
     def set_line(self, dataset, original_line, line):
+        # print(line)
         # line = line.lower().strip()
 
         def set_episode_number(number, value):
@@ -403,18 +419,30 @@ class YTJDTest:
             if self.use_fuzzy_title:
                 # split alternate titles into separate fuzzy keys
                 for subtitle in field.split(" aka "):
+                    keys = remove_the_matter(subtitle)
+                    subtitle = " ".join(keys)
                     # print(f"    string used for fuzzy match {field!r}")
                     key = StringFuzzyKey(subtitle, minimum_score=self.fuzzy_title_minimum_score)
                     # print(f"    dataset._id={dataset._id!r} field={field!r} key={key!r} -> original_line={original_line!r}")
                     dataset.set(key, original_line, weight=self.fuzzy_title_weight)
-            else:
-                # don't remove dashes until now, it messes up dates, etc
-                field = field.replace("-", " ")
-                field = field.replace("aka", " ")
-                keys = field.lower().split()
-                weight = weight=self.exact_title_key_weight
-                dataset.set_keys(keys, original_line, weight)
                 continue
+
+            # non-fuzzy title.
+            weight = self.exact_title_key_weight
+
+            # don't remove dashes until now, it messes up dates, etc
+            field = field.lower()
+            field = field.replace("-", " ")
+            field = field.replace("aka", " ")
+
+            # print(field)
+            dataset.set_keys(field.split(), original_line, weight, runs=(2, 100))
+
+            keys = remove_the_matter(field, lower=True)
+
+            for key in keys:
+                # print(" ", key)
+                dataset.set(key, original_line, weight)
 
 
 def is_int(s):
@@ -424,18 +452,39 @@ def is_int(s):
     except ValueError:
         return False
 
+def remove_the_matter(field, *, lower=False):
+    """
+    Takes string, returns split() version with leading 'The' and trailing 'Matter' removed.
+
+    If lower is True, assume field is .lower()ed, so, remove 'the' and 'matter'.
+    """
+    if lower:
+        the = "the"
+        matter = "matter"
+    else:
+        the = "The"
+        matter = "Matter"
+
+    keys = field.strip().split()
+    if keys[0] == the:
+        del keys[0]
+    keys.reverse()
+    try:
+        index = keys.index(matter)
+        del keys[index]
+    except ValueError:
+        pass
+    keys.reverse()
+    return keys
+
+
 
 def cleanup_line(line):
-    # remove
-    for s in (
-        "Yours Truly, Johnny Dollar - ",
-        " Matter",
-        ):
-        line = line.replace(s, "")
-
     # replace with space
     for s in (
-        " The ",
+        "Yours Truly, Johnny Dollar - ",
+        # " Matter",
+        # " The ",
         " Part ",
         ",",
         ".",

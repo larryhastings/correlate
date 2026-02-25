@@ -2,7 +2,7 @@
 
 ## A clever brute-force correlator for kinda-messy data
 
-##### Copyright 2019-2023 by Larry Hastings
+##### Copyright 2019-2026 by Larry Hastings
 
 
 ## Overview
@@ -17,6 +17,8 @@ To use **correlate**, you feed in the two datasets of (opaque) values
 and their associated metadata information.  **correlate** uses the
 metadata to find matches between the two datasets, ranks these matches
 using a unique scoring heuristic, and returns the matches.
+
+The current version is [1.2.](#12)
 
 
 ### Quick Start
@@ -410,10 +412,23 @@ keys runs about *12x slower* on my computer.
 >
 > You can use `Dataset[key] = value` as a shortcut for `Dataset.set(key, value)`.
 
-`Correlator.Dataset.set_keys(keys, value, weight=default_weight)`
+`Correlator.Dataset.set_keys(keys, value, weight=default_weight, *, runs=(1, 2))`
 
 > Map multiple keys to a single value, all using the same weight.
 > `keys` must be an iterable containing keys.
+>
+> `runs` specifies a 2-tuple `(start, stop)` defining the range of
+> "run lengths" to add.  This range is the list of numbers defined by
+> `range(start, stop)`; in other words, it starts at `start` and stops at
+> (and doesn't include) `stop`.  A "run length" defines the number of
+> consecutive values from `keys` to combine together into one key.
+> The default value of `(1, 2)` means only runs of length 1 are
+> considered; a "run" of length 1 is just the key itself.  A "run"
+> of length 2 creates tuples out of every two consecutive values in
+> `keys` (e.g. `(keys[0], keys[1])`, then  `(keys[1], keys[2])`, etc).
+> A "run" of length 3 means three consecutive values
+> (`(keys[0], keys[1], keys[2])`).  Runs of length 2+ can add excellent
+> signal to your correlations, at the cost of the extra keys.
 
 `Correlator.Dataset.value(value, *, ranking=None)`
 
@@ -2068,17 +2083,72 @@ the results.
 
 ## Version History
 
-**1.1**
+#### 1.2
+
+*2026/02/25*
+
+Added simple support for deriving signal from *runs* of matching keys.
+If a value in A was `"The Indestructable Mike Matter"`, and
+B contained both `"The Indestructable Mike Matter"` and
+`"Matter Mike Indestructable The"`, I'd view the former as a
+better match, but **correlate** 1.1 would score them as equivalent
+matches.
+
+To use, pass in a sequence of keys to `dataset.set_keys()` as
+normal, but take advantage of the new `runs` parameter.  The value
+should be a 2-tuple expressing the range of lengths of runs you want
+examined as `[start, stop)` (like Python's `range`).   The default
+is `(1, 2)`, meaning it'll only consider "runs" of length 1--in
+other words, no change in behavior.  Pass in something like
+`runs=(1, 20)` and now it'll add runs of length 1 to length 19.
+(Of course, the longest run for any individual `set_keys` call
+is also capped by `len(keys)`.)
+
+For example, if you call
+`dataset.set_keys(['The', 'Confidential', 'Matter'], episode, run=(1, 30))`,
+correlate will map the following keys to `episode` in `dataset`:
+
+```
+'The'
+'Confidential'
+'Matter'
+('The', 'Confidential')
+('Confidential', 'Matter')
+('The', 'Confidential', 'Matter')
+```
+
+If you'd specified `run=(1, 3)`, the last one would have been omitted,
+as `set_keys` would have stopped at run length 2.
+
+This leverages the **correlate** scoring algorithm nicely.
+`('The', 'Confidential', 'Matter')` is a rare key, so it'll be high
+scoring.  If it matches on both sides then it's probably an excellent
+match.  And if one side omits the leading `"The"`, you'll still match
+on the probably-just-as-rare `('Confidential', 'Matter')`.
+
+This slows things down a little--understandably, as **correlate** is
+adding more keys.  But the signal seems to be solid.  Leveraging the
+`runs` parameter is easy, and produces good results, and may save you
+from having to employ more exotic tuning strategies to improve your
+results.
+
+I also quashed some obscure bugs in **correlate**, found by a code review
+I got from Claude Opus 4.6.  I'm not sure any of them were biting anybody.
+
+Finally, updated copyright notices to 2026.
+
+#### 1.1
+
 
 Added a new ranking approach!  The first two were `AbsoluteRanking`
 and `RelativeRanking`, this new third one is `ReversedAbsoluteRanking`.
 
-**1.0**
+#### 1.0
 
 No code changes.  But **correlate** has been stable and working
 for a while now... it's time to mark it as 1.0.
 
-**0.8.3**
+#### 0.8.3
 
 A slight bugfix for `print_datasets()`.   `print_datasets()`
 prints out the keys for each value in sorted order.  But that
@@ -2095,7 +2165,7 @@ least one key; now it raises a `ValueError` with a string
 that prints every value.  (This can be unreadable if there
 are a lot!  But better safe than sorry.)
 
-**0.8.2**
+#### 0.8.2
 
 Fixed up ``infer_mv``.  It works the same, but the comments it
 prints out are now much improved.  In particular, there was
@@ -2106,12 +2176,12 @@ match.
 There were no other changes; the **correlate** algorithm is
 unchanged from 0.8.1.
 
-**0.8.1**
+#### 0.8.1
 
 Fixed compatibility with Python 3.6.  All I needed to do was
 remove some *equals-sign-in-f-strings* usage in spots.
 
-**0.8**
+#### 0.8
 
 The result of loving hand-tuned optimization: **correlate** version 0.8
 is now an astonishing *19.5%* faster than version 0.7--and *27.3%* faster
@@ -2125,7 +2195,7 @@ the slowest test to the fastest, using the same corpus.  On my computer
 the test without fuzzy keys is *12x faster* than the one that uses
 fuzzy keys for everything.)
 
-**0.7**
+#### 0.7
 
 Careful micro-optimizations for both exact and fuzzy key
 code paths have made **correlate** up to 7.5% faster!
@@ -2137,7 +2207,7 @@ It should now always:
 * prefer the *last* equivalent item when two or more items
   produce the same cumulative score.
 
-**0.6.1**
+#### 0.6.1
 
 Bugfix for major but rare bug: if there are multiple
 groups of `len() > 1` of "connected" match objects with
@@ -2146,7 +2216,7 @@ smallest one--the rest were accidentally discarded.
 (`match_boiler_2_test()` was added to `tests/regression_test.py`
 to check for this.)
 
-**0.6**
+#### 0.6
 
 Big performance boost in "fuzzy boiling"!  Clever sorting of fuzzy matches,
 and improvements in the stability (as in "stable sort") of `MatchBoiler`,
@@ -2180,12 +2250,12 @@ The cumulative effect: a speedup of up to 30% in fuzzy match boiling,
 and up to 5% on YTJD tests using a lot of fuzzy keys.  Match boiling got
 slightly faster too.
 
-**0.5.1**
+#### 0.5.1
 
 Bugfix release.  In the original version, if a match didn't have any matches between
 fuzzy keys (with a positive score), it ignored the weights of its exact keys and just
 used the raw exact score.
 
-**0.5**
+#### 0.5
 
 Initial public release.

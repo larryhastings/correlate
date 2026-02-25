@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2023 by Larry Hastings
+# Copyright 2019-2026 by Larry Hastings
 #
 # Correlates two sets of things
 # by scanning over data sets,
@@ -36,14 +36,14 @@ unique or fuzzy keys between the two datasets.
 #             some sort of binary partitioning.  a la BSPs?
 
 import bisect
-from collections import defaultdict
+from collections import defaultdict, deque
 import enum
 import itertools
 import math
 # import pprint #debug
 import time
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 
 punctuation = ".?!@#$%^&*:,<>{}[]\\|_-"
@@ -314,6 +314,7 @@ class MatchBoiler:
         previous_score = -math.inf
         for i, item in enumerate(self.matches):
             assert previous_score <= item.score, f"{self.name}.matches not in ascending sorted order! previous_score {previous_score} > matches[{i}].score {item.score}"
+            previous_score = item.score
         return True
 
     def __call__(self):
@@ -587,23 +588,35 @@ class MatchBoiler:
 
 class CorrelatorMatch:
     def __init__(self, value_a, value_b, score):
+        # establish the order of attributes first,
+        # in case you iterate over 'em
+        self.value_a = None
+        self.value_b = None
+        self.score = score
+        self._hash = None
+
+        self._refresh(value_a, value_b)
+
+    def _refresh(self, value_a, value_b):
         self.value_a = value_a
         self.value_b = value_b
-        self.score = score
-        self.tuple = (self.score, self.value_a, self.value_b)
+        self._hash = None
+        self._tuple = (self.score, value_a, value_b)
 
     def __repr__(self):
         return f"<CorrelatorMatch a={self.value_a!r} x b={self.value_b!r} = score={self.score}>"
 
     def __iter__(self):
-        return iter(self.tuple)
+        return iter(self._tuple)
 
     def __hash__(self):
-        return hash(self.tuple)
+        if self._hash is None:
+            self._hash = hash(self._tuple)
+        return self._hash
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self.tuple == other.tuple
+            return self._tuple == other._tuple
         return False
 
     def __ne__(self, other):
@@ -612,7 +625,7 @@ class CorrelatorMatch:
     def __lt__(self, other):
         if not isinstance(other, self.__class__):
             raise ValueError("can only compare to other members of " + self.__class__.__name__)
-        return self.tuple < other.tuple
+        return self._tuple < other._tuple
 
 
 
@@ -755,14 +768,32 @@ class Correlator:
 
             self._max_round = max(self._max_round, round + 1)
 
+        def set_keys(self, keys, value, weight=None, *, runs=(1, 2)):
+            min_run, max_run = runs
+            assert min_run >= 1
+            if min_run == 1:
+                for key in keys:
+                    self.set(key, value, weight)
 
-        def set_keys(self, keys, value, weight=None):
-            # maybe optimize this later
-            for key in keys:
-                self.set(key, value, weight)
+            min_run = max(min_run, 2)
+            max_run = min(max_run, len(keys) + 1)
+            if max_run <= 2:
+                return
+
+            fifo = deque()
+            for length in range(min_run, max_run):
+                fifo.clear()
+                for key in keys:
+                    fifo.append(key)
+                    if len(fifo) > length:
+                        fifo.popleft()
+                    if len(fifo) == length:
+                        self.set(tuple(fifo), value, weight)
 
         def value(self, value, *, ranking=None):
-            assert (ranking is None) or isinstance(ranking, (int, float)), f"illegal ranking value {ranking!r}"
+            if ranking is None:
+                return
+            assert isinstance(ranking, (int, float)), f"illegal ranking value {ranking!r}"
             index = self._value_index(value)
             while len(self._rankings) <= index:
                 self._rankings.append(None)
@@ -952,7 +983,7 @@ class Correlator:
             for i, value in enumerate(dataset.values):
                 try:
                     found = dataset.values[i+1:].index(value)
-                    assert found == i, f"found two instances of value {value} in dataset {dataset._id}, {i} and {found+i+1}"
+                    raise RuntimeError(f"found two instances of value {value} in dataset {dataset._id}, {i} and {found+i+1}")
                 except ValueError:
                     continue
 
@@ -966,7 +997,7 @@ class Correlator:
                         assert sorted_rounds == rounds
 
             unused_indices = set(range(len_values))
-            self._key_to_index = defaultdict_list()
+            # self._key_to_index = defaultdict_list()
             for key, rounds in dataset._key_to_index.items():
                 previous_round = None
                 for round in rounds:
@@ -979,6 +1010,7 @@ class Correlator:
                     if previous_round is not None:
                         # round and previous_round are sets, this is set.issubset()
                         assert round <= previous_round
+                    previous_round = round
 
             # invariant: at least one key maps to every value
             if unused_indices:
@@ -1590,8 +1622,7 @@ class Correlator:
         # self.print() #debug
 
         for match in matches:
-            match.value_a = a.values[match.value_a]
-            match.value_b = b.values[match.value_b]
+            match._refresh(a.values[match.value_a], b.values[match.value_b])
 
         return_value = CorrelatorResult(matches, unmatched_a, unmatched_b, minimum_score, statistics)
         end = time.perf_counter()

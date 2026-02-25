@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # correlate
-# Copyright 2019-2023 by Larry Hastings
+# Copyright 2019-2026 by Larry Hastings
 #
 # Regression and smoke tests for correlate.
 #
